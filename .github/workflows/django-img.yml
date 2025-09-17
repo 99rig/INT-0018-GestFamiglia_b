@@ -1,0 +1,37 @@
+name: Build Django image 
+env:
+  IMAGE_NAME: mcf/backend
+  IMAGE_TAG: latest
+  #CONTEXT_SUBDIR: mumble_b 
+  REGISTRY_HOST: registry.mumble.cloud
+  REGISTRY_USERNAME: mumble
+on:
+  push:
+      branches:
+        - main
+        - docker
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - uses: hmarr/debug-action@v2
+
+      - uses: actions/checkout@v2
+
+      - name: Docker Login
+        uses: docker/login-action@v2.2.0
+        with:
+          registry: ${{ env.REGISTRY_HOST }}
+          username: ${{ env.REGISTRY_USERNAME }}
+          password: ${{ secrets['REGISTRY_PASSWORD'] }}
+
+      - name: Build and push Docker images
+        uses: docker/build-push-action@v4.1.0
+        with:
+          #context: ${{ env.CONTEXT_SUBDIR }}
+          push: true
+          tags: ${{env.REGISTRY_HOST}}/${{env.IMAGE_NAME}}:${{env.IMAGE_TAG}}
+          
