@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand, CommandError
-from categories.models import Category, Subcategory
+from apps.categories.models import Category, Subcategory
 
 
 class Command(BaseCommand):
