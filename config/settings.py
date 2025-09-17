@@ -30,7 +30,13 @@ SECRET_KEY = 'django-insecure-i$i!h!827s^*idfbaypy+f4pg!c=!=10)z^+&ib_#=z7g-fs48
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '192.168.1.125']
+ALLOWED_HOSTS = [
+    '127.0.0.1', 
+    'localhost', 
+    '192.168.1.125',
+    'lacrazyfamily.com',
+    'www.lacrazyfamily.com'
+]
 
 
 # Application definition
@@ -162,12 +168,19 @@ REST_FRAMEWORK = {
 
 # CORS settings
 CORS_ALLOWED_ORIGINS = [
+    # Development
     "http://localhost:3000",  # React
     "http://127.0.0.1:3000",  # React
     "http://localhost:9000",  # Quasar
     "http://127.0.0.1:9000",  # Quasar
     "http://192.168.1.125:9000",  # Quasar da rete locale
     "http://192.168.1.125:8000",  # Django API da rete locale
+    
+    # Production
+    "https://lacrazyfamily.com",  # Produzione
+    "https://www.lacrazyfamily.com",  # Produzione con www
+    
+    # Mobile
     "capacitor://localhost",  # Capacitor Android
     "https://localhost",  # Capacitor iOS
 ]
