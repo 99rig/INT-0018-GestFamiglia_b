@@ -285,3 +285,102 @@ class SavingGoalCreateUpdateSerializer(serializers.ModelSerializer):
             })
 
         return attrs
+
+
+class SpendingPlanSerializer(serializers.ModelSerializer):
+    """Serializer per i piani di spesa"""
+    users_detail = UserSerializer(source='users', many=True, read_only=True)
+    created_by_detail = UserSerializer(source='created_by', read_only=True)
+    planned_expenses = PlannedExpenseSerializer(many=True, read_only=True)
+
+    # Statistiche calcolate dal backend
+    total_planned_amount = serializers.SerializerMethodField()
+    total_unplanned_expenses_amount = serializers.SerializerMethodField()
+    total_estimated_amount = serializers.SerializerMethodField()
+    completed_expenses_amount = serializers.SerializerMethodField()
+    completed_count = serializers.SerializerMethodField()
+    total_expenses_count = serializers.SerializerMethodField()
+    pending_expenses_amount = serializers.SerializerMethodField()
+    completion_percentage = serializers.SerializerMethodField()
+    is_current = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SpendingPlan
+        fields = [
+            'id', 'name', 'description', 'plan_type', 'start_date', 'end_date', 'total_budget',
+            'users', 'users_detail', 'is_shared', 'created_by', 'created_by_detail',
+            'is_active', 'planned_expenses',
+            'total_planned_amount', 'total_unplanned_expenses_amount', 'total_estimated_amount',
+            'completed_expenses_amount', 'completed_count', 'total_expenses_count',
+            'pending_expenses_amount', 'completion_percentage', 'is_current',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'created_at', 'updated_at', 'total_planned_amount',
+            'total_unplanned_expenses_amount', 'total_estimated_amount',
+            'completed_expenses_amount', 'completed_count', 'total_expenses_count',
+            'pending_expenses_amount', 'completion_percentage', 'is_current'
+        ]
+
+    def get_total_planned_amount(self, obj):
+        """Importo totale pianificato"""
+        return str(obj.get_total_planned_amount())
+
+    def get_total_unplanned_expenses_amount(self, obj):
+        """Importo totale spese non pianificate"""
+        return str(obj.get_total_unplanned_expenses_amount())
+
+    def get_total_estimated_amount(self, obj):
+        """Importo totale stimato (pianificate + non pianificate)"""
+        return str(obj.get_total_estimated_amount())
+
+    def get_completed_expenses_amount(self, obj):
+        """Importo delle spese completate"""
+        return str(obj.get_completed_expenses_amount())
+
+    def get_completed_count(self, obj):
+        """Numero di spese completate"""
+        return obj.get_completed_count()
+
+    def get_total_expenses_count(self, obj):
+        """Numero totale di spese"""
+        return obj.get_total_expenses_count()
+
+    def get_pending_expenses_amount(self, obj):
+        """Importo delle spese in sospeso"""
+        return str(obj.get_pending_expenses_amount())
+
+    def get_completion_percentage(self, obj):
+        """Percentuale di completamento"""
+        return float(obj.get_completion_percentage())
+
+    def get_is_current(self, obj):
+        """Se il piano è attivo nel periodo corrente"""
+        return obj.is_current()
+
+
+class SpendingPlanCreateUpdateSerializer(serializers.ModelSerializer):
+    """Serializer per creare/aggiornare piani di spesa"""
+    users = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=UserSerializer.Meta.model.objects.all()
+    )
+
+    class Meta:
+        model = SpendingPlan
+        fields = [
+            'name', 'description', 'plan_type', 'start_date', 'end_date', 'total_budget',
+            'users', 'is_shared', 'is_active'
+        ]
+
+    def validate(self, attrs):
+        """Valida le date"""
+        start_date = attrs.get('start_date')
+        end_date = attrs.get('end_date')
+
+        if start_date and end_date and end_date <= start_date:
+            raise serializers.ValidationError({
+                "end_date": "La data di fine deve essere successiva alla data di inizio."
+            })
+
+        return attrs

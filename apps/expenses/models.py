@@ -112,6 +112,15 @@ class Expense(models.Model):
         verbose_name="Spesa Pianificata",
         help_text="Spesa pianificata a cui questo pagamento contribuisce"
     )
+    spending_plan = models.ForeignKey(
+        'reports.SpendingPlan',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='actual_expenses',
+        verbose_name="Piano di Spesa",
+        help_text="Piano di spesa a cui appartiene questa spesa"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

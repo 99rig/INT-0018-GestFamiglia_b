@@ -41,10 +41,30 @@ class SpendingPlan(models.Model):
         verbose_name="Data fine",
         default='2025-09-30'
     )
+    total_budget = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name="Budget totale pianificato",
+        help_text="Budget complessivo pianificato per questo periodo"
+    )
     users = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         related_name='spending_plans',
         verbose_name="Utenti"
+    )
+    is_shared = models.BooleanField(
+        default=True,
+        verbose_name="Condiviso con famiglia",
+        help_text="Se False, il piano è visibile solo al creatore"
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='created_spending_plans',
+        verbose_name="Creato da",
+        null=True,
+        blank=True
     )
     is_active = models.BooleanField(
         default=True,
@@ -65,11 +85,55 @@ class SpendingPlan(models.Model):
         """Calcola l'importo totale pianificato"""
         return self.planned_expenses.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 
+    def get_total_unplanned_expenses_amount(self):
+        """Calcola l'importo totale delle spese non pianificate collegate al piano"""
+        from apps.expenses.models import Expense
+        return Expense.objects.filter(
+            spending_plan=self,
+            status__in=['pagata', 'parzialmente_pagata']
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+    def get_total_estimated_amount(self):
+        """Calcola l'importo totale stimato (pianificate + non pianificate)"""
+        planned = self.get_total_planned_amount()
+        unplanned = self.get_total_unplanned_expenses_amount()
+        return planned + unplanned
+
     def get_completed_expenses_amount(self):
-        """Calcola l'importo delle spese completate"""
-        return self.planned_expenses.filter(
+        """Calcola l'importo delle spese completate (pianificate + non pianificate)"""
+        # Spese pianificate completate
+        planned_completed = self.planned_expenses.filter(
             is_completed=True
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+        # Spese non pianificate pagate
+        unplanned_completed = self.get_total_unplanned_expenses_amount()
+
+        return planned_completed + unplanned_completed
+
+    def get_completed_count(self):
+        """Calcola il numero di spese completate (pianificate + non pianificate)"""
+        from apps.expenses.models import Expense
+
+        # Spese pianificate completate
+        planned_count = self.planned_expenses.filter(is_completed=True).count()
+
+        # Spese non pianificate pagate
+        unplanned_count = Expense.objects.filter(
+            spending_plan=self,
+            status__in=['pagata', 'parzialmente_pagata']
+        ).count()
+
+        return planned_count + unplanned_count
+
+    def get_total_expenses_count(self):
+        """Calcola il numero totale di spese (pianificate + non pianificate)"""
+        from apps.expenses.models import Expense
+
+        planned_count = self.planned_expenses.count()
+        unplanned_count = Expense.objects.filter(spending_plan=self).count()
+
+        return planned_count + unplanned_count
 
     def get_pending_expenses_amount(self):
         """Calcola l'importo delle spese ancora da completare"""
@@ -79,10 +143,10 @@ class SpendingPlan(models.Model):
 
     def get_completion_percentage(self):
         """Calcola la percentuale di completamento"""
-        total_planned = self.get_total_planned_amount()
-        if total_planned > 0:
-            completed = self.get_completed_expenses_amount()
-            return (completed / total_planned * 100)
+        total_count = self.get_total_expenses_count()
+        if total_count > 0:
+            completed_count = self.get_completed_count()
+            return (completed_count / total_count * 100)
         return Decimal('0.00')
 
     def is_current(self):

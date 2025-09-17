@@ -1,5 +1,13 @@
+import os
 from django.db import models
 from django.utils import timezone
+from django.conf import settings
+
+
+def apk_upload_path(instance, filename):
+    """Definisce il percorso di upload per gli APK"""
+    # Salva in backend/apk_releases/ invece che in media/
+    return os.path.join('..', 'apk_releases', filename)
 
 
 class AppVersion(models.Model):
@@ -7,7 +15,7 @@ class AppVersion(models.Model):
     
     version_name = models.CharField(max_length=20, help_text="es. 1.0.0")
     version_code = models.IntegerField(unique=True, help_text="Numero versione incrementale")
-    apk_file = models.FileField(upload_to='apk/', help_text="File APK")
+    apk_file = models.FileField(upload_to=apk_upload_path, help_text="File APK")
     release_notes = models.TextField(blank=True, help_text="Note di rilascio")
     is_mandatory = models.BooleanField(default=False, help_text="Aggiornamento obbligatorio")
     min_supported_version = models.IntegerField(help_text="Versione minima supportata")

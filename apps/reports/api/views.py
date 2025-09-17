@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Sum, Count, Avg, Q
 from datetime import datetime
-from apps.reports.models import Budget, BudgetCategory, SavingGoal, PlannedExpense
+from apps.reports.models import Budget, BudgetCategory, SavingGoal, PlannedExpense, SpendingPlan
 from apps.expenses.models import Expense
 from .serializers import (
     BudgetSerializer,
@@ -15,7 +15,9 @@ from .serializers import (
     SavingGoalSerializer,
     SavingGoalCreateUpdateSerializer,
     PlannedExpenseSerializer,
-    PlannedExpenseCreateUpdateSerializer
+    PlannedExpenseCreateUpdateSerializer,
+    SpendingPlanSerializer,
+    SpendingPlanCreateUpdateSerializer
 )
 
 
@@ -435,3 +437,144 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
                 summary['overdue_count'] += 1
 
         return Response(summary)
+
+
+class SpendingPlanViewSet(viewsets.ModelViewSet):
+    """ViewSet per la gestione dei piani di spesa"""
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['plan_type', 'is_active']
+    ordering_fields = ['start_date', 'end_date', 'created_at']
+    ordering = ['-start_date', '-created_at']
+
+    def get_queryset(self):
+        """Restituisce i piani di spesa visibili all'utente (personali + famiglia)"""
+        user = self.request.user
+        from django.db.models import Q
+
+        # Piani personali (creati dall'utente e non condivisi)
+        personal_plans = Q(created_by=user, is_shared=False)
+
+        # Piani condivisi con la famiglia (se l'utente ha una famiglia)
+        family_plans = Q()
+        if user.family:
+            family_users = user.family.members.all()
+            family_plans = Q(users__in=family_users, is_shared=True)
+
+        # Restituisci piani personali + piani famiglia
+        return SpendingPlan.objects.filter(personal_plans | family_plans).distinct()
+
+    def get_serializer_class(self):
+        if self.action in ['create', 'update', 'partial_update']:
+            return SpendingPlanCreateUpdateSerializer
+        return SpendingPlanSerializer
+
+    def perform_create(self, serializer):
+        """Salva automaticamente il creatore del piano"""
+        serializer.save(created_by=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def current(self, request):
+        """Restituisce i piani di spesa attivi nel periodo corrente della famiglia"""
+        from django.utils import timezone
+        today = timezone.now().date()
+        user = request.user
+
+        # Se l'utente non appartiene a nessuna famiglia, non vede nessun piano
+        if not user.family:
+            return Response([])
+
+        # Filtra per piani attivi che includono utenti della stessa famiglia
+        family_users = user.family.members.all()
+        plans = SpendingPlan.objects.filter(
+            users__in=family_users,
+            start_date__lte=today,
+            end_date__gte=today,
+            is_active=True
+        ).distinct()
+
+        serializer = SpendingPlanSerializer(plans, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def copy_to_next_period(self, request, pk=None):
+        """Copia il piano di spesa al periodo successivo"""
+        plan = self.get_object()
+        from datetime import timedelta
+
+        # Calcola il periodo successivo
+        period_length = (plan.end_date - plan.start_date).days
+        new_start_date = plan.end_date + timedelta(days=1)
+        new_end_date = new_start_date + timedelta(days=period_length)
+
+        # Verifica se esiste già un piano sovrapposto
+        if SpendingPlan.objects.filter(
+            name=plan.name,
+            start_date__lte=new_end_date,
+            end_date__gte=new_start_date
+        ).exists():
+            return Response(
+                {'detail': 'Esiste già un piano per il periodo selezionato.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Crea il nuovo piano
+        new_plan = SpendingPlan.objects.create(
+            name=plan.name,
+            description=f"Copiato da {plan.start_date} - {plan.end_date}",
+            plan_type=plan.plan_type,
+            start_date=new_start_date,
+            end_date=new_end_date,
+            is_active=True
+        )
+        new_plan.users.set(plan.users.all())
+
+        # Copia le spese pianificate
+        for planned_expense in plan.planned_expenses.all():
+            PlannedExpense.objects.create(
+                spending_plan=new_plan,
+                description=planned_expense.description,
+                amount=planned_expense.amount,
+                category=planned_expense.category,
+                subcategory=planned_expense.subcategory,
+                priority=planned_expense.priority,
+                notes=planned_expense.notes
+            )
+
+        serializer = SpendingPlanSerializer(new_plan)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'])
+    def statistics(self, request):
+        """Statistiche generali sui piani di spesa della famiglia"""
+        user = request.user
+
+        if not user.family:
+            return Response({
+                'total_plans': 0,
+                'active_plans': 0,
+                'total_planned_amount': '0.00',
+                'total_spent_amount': '0.00',
+                'average_completion': 0.0
+            })
+
+        family_users = user.family.members.all()
+        plans = SpendingPlan.objects.filter(users__in=family_users).distinct()
+
+        total_plans = plans.count()
+        active_plans = plans.filter(is_active=True).count()
+
+        total_planned = sum(float(plan.get_total_planned_amount()) for plan in plans)
+        total_spent = sum(float(plan.get_completed_expenses_amount()) for plan in plans)
+
+        # Calcola la media di completamento
+        completion_percentages = [float(plan.get_completion_percentage()) for plan in plans if plan.get_total_expenses_count() > 0]
+        average_completion = sum(completion_percentages) / len(completion_percentages) if completion_percentages else 0.0
+
+        return Response({
+            'total_plans': total_plans,
+            'active_plans': active_plans,
+            'total_planned_amount': str(total_planned),
+            'total_spent_amount': str(total_spent),
+            'average_completion': round(average_completion, 2)
+        })

@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from apps.expenses.models import Expense, RecurringExpense, ExpenseAttachment, ExpenseQuota, Budget
+from apps.reports.models import SpendingPlan
 from apps.categories.api.serializers import CategorySerializer, SubcategorySerializer
 from apps.users.api.serializers import UserSerializer
 
@@ -85,8 +86,9 @@ class ExpenseSerializer(serializers.ModelSerializer):
     attachments = ExpenseAttachmentSerializer(many=True, read_only=True)
     quote = ExpenseQuotaSerializer(many=True, read_only=True)
     budget_detail = serializers.SerializerMethodField()
+    spending_plan = serializers.IntegerField(source='spending_plan.id', read_only=True)
     split_amount = serializers.SerializerMethodField()
-    
+
     # Campi per gestione quote
     has_quote = serializers.SerializerMethodField()
     total_paid_amount = serializers.SerializerMethodField()
@@ -95,7 +97,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
     paid_quote_count = serializers.SerializerMethodField()
     total_quote_count = serializers.SerializerMethodField()
     next_due_quota = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = Expense
         fields = [
@@ -103,12 +105,12 @@ class ExpenseSerializer(serializers.ModelSerializer):
             'subcategory_detail', 'amount', 'description', 'notes', 'date',
             'payment_method', 'status', 'receipt', 'shared_with',
             'shared_with_details', 'is_recurring', 'budget', 'budget_detail',
-            'attachments', 'quote', 'split_amount', 'has_quote', 'total_paid_amount', 
-            'remaining_amount', 'payment_progress_percentage', 'paid_quote_count', 
+            'spending_plan', 'attachments', 'quote', 'split_amount', 'has_quote', 'total_paid_amount',
+            'remaining_amount', 'payment_progress_percentage', 'paid_quote_count',
             'total_quote_count', 'next_due_quota', 'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'user', 'created_at', 'updated_at', 'split_amount',
+            'id', 'user', 'created_at', 'updated_at', 'spending_plan', 'split_amount',
             'has_quote', 'total_paid_amount', 'remaining_amount',
             'payment_progress_percentage', 'paid_quote_count', 'total_quote_count',
             'next_due_quota'
@@ -163,13 +165,18 @@ class ExpenseCreateUpdateSerializer(serializers.ModelSerializer):
         queryset=UserSerializer.Meta.model.objects.all(),
         required=False
     )
-    
+    spending_plan = serializers.PrimaryKeyRelatedField(
+        queryset=SpendingPlan.objects.all(),
+        required=False,
+        allow_null=True
+    )
+
     class Meta:
         model = Expense
         fields = [
             'category', 'subcategory', 'amount', 'description', 'notes',
             'date', 'payment_method', 'status', 'receipt', 'shared_with',
-            'is_recurring', 'budget'
+            'is_recurring', 'budget', 'spending_plan'
         ]
     
     def validate(self, attrs):
