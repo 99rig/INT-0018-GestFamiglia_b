@@ -1,5 +1,63 @@
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
+from django.utils import timezone
+import uuid
+
+
+class Family(models.Model):
+    """
+    Modello per rappresentare una famiglia/gruppo che condivide le spese
+    """
+    name = models.CharField(
+        max_length=100,
+        verbose_name="Nome Famiglia"
+    )
+    created_by = models.ForeignKey(
+        'User',
+        on_delete=models.PROTECT,
+        related_name='created_families',
+        verbose_name="Creata da",
+        null=True  # Temporaneo per migrazione
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+
+    # Codice invito univoco per aggiungere membri
+    invite_code = models.CharField(
+        max_length=8,
+        unique=True,
+        verbose_name="Codice Invito"
+    )
+
+    class Meta:
+        verbose_name = "Famiglia"
+        verbose_name_plural = "Famiglie"
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.invite_code:
+            self.invite_code = self.generate_invite_code()
+        super().save(*args, **kwargs)
+
+    def generate_invite_code(self):
+        """Genera un codice di invito univoco di 8 caratteri"""
+        import random
+        import string
+        while True:
+            code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+            if not Family.objects.filter(invite_code=code).exists():
+                return code
+
+    def get_members_count(self):
+        """Restituisce il numero di membri della famiglia"""
+        return self.members.count()
+
+    def get_masters_count(self):
+        """Restituisce il numero di master della famiglia"""
+        return self.members.filter(profile__role='master').count()
 
 
 class UserManager(BaseUserManager):
@@ -39,10 +97,21 @@ class User(AbstractUser):
     """
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username', 'first_name', 'last_name']
-    
+
     objects = UserManager()
-    
+
     email = models.EmailField(unique=True, verbose_name="Email")
+
+    # Relazione con la famiglia
+    family = models.ForeignKey(
+        Family,
+        on_delete=models.CASCADE,
+        related_name='members',
+        null=True,
+        blank=True,
+        verbose_name="Famiglia"
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -53,6 +122,39 @@ class User(AbstractUser):
     
     def __str__(self):
         return f"{self.get_full_name() or self.email}"
+
+    def is_family_master(self):
+        """Verifica se l'utente è un master della famiglia"""
+        return hasattr(self, 'profile') and self.profile.role == 'master'
+
+    def can_manage_family(self):
+        """Verifica se l'utente può gestire la famiglia (invitare, rimuovere membri)"""
+        return self.is_family_master()
+
+    def get_family_members(self):
+        """Restituisce tutti i membri della stessa famiglia"""
+        if self.family:
+            return self.family.members.filter(is_active=True)
+        return User.objects.none()
+
+    def create_family(self, family_name):
+        """Crea una nuova famiglia e rende questo utente il creatore"""
+        if self.family is not None:
+            raise ValueError("L'utente è già membro di una famiglia")
+
+        family = Family.objects.create(
+            name=family_name,
+            created_by=self
+        )
+        self.family = family
+        self.save()
+
+        # Crea il profilo come master se non esiste
+        if hasattr(self, 'profile'):
+            self.profile.role = 'master'
+            self.profile.save()
+
+        return family
 
 
 class UserProfile(models.Model):
@@ -111,6 +213,15 @@ class UserProfile(models.Model):
         verbose_name="Biografia",
         help_text="Breve descrizione"
     )
+
+    # Preferenze UI personalizzate
+    ui_preferences = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Preferenze UI",
+        help_text="Impostazioni personalizzate dell'interfaccia (font, colori, etc.)"
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -131,3 +242,76 @@ class UserProfile(models.Model):
     def can_plan_budget(self):
         """Verifica se può pianificare budget"""
         return self.is_master
+
+
+class FamilyInvitation(models.Model):
+    """
+    Modello per gestire gli inviti alla famiglia
+    """
+    STATUS_CHOICES = [
+        ('pending', 'In Attesa'),
+        ('accepted', 'Accettato'),
+        ('declined', 'Rifiutato'),
+        ('expired', 'Scaduto'),
+    ]
+
+    family = models.ForeignKey(
+        Family,
+        on_delete=models.CASCADE,
+        related_name='invitations',
+        verbose_name="Famiglia"
+    )
+    invited_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='sent_invitations',
+        verbose_name="Invitato da"
+    )
+    email = models.EmailField(verbose_name="Email Invitato")
+    family_role = models.CharField(
+        max_length=20,
+        choices=UserProfile.ROLE_CHOICES,
+        default='familiare',
+        verbose_name="Ruolo Proposto"
+    )
+
+    # Token univoco per l'invito
+    token = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        verbose_name="Token Invito"
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        verbose_name="Stato"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(verbose_name="Scade il")
+    accepted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Invito Famiglia"
+        verbose_name_plural = "Inviti Famiglia"
+        unique_together = ['family', 'email', 'status']  # Un solo invito pending per email per famiglia
+
+    def __str__(self):
+        return f"Invito {self.email} → {self.family.name} ({self.status})"
+
+    def save(self, *args, **kwargs):
+        if not self.expires_at:
+            # Invito valido per 7 giorni
+            from datetime import timedelta
+            self.expires_at = timezone.now() + timedelta(days=7)
+        super().save(*args, **kwargs)
+
+    def is_expired(self):
+        """Verifica se l'invito è scaduto"""
+        return timezone.now() > self.expires_at
+
+    def can_be_accepted(self):
+        """Verifica se l'invito può essere accettato"""
+        return self.status == 'pending' and not self.is_expired()

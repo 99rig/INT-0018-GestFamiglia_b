@@ -198,3 +198,18 @@ SIMPLE_JWT = {
     'SIGNING_KEY': SECRET_KEY,
     'ALGORITHM': 'HS256',
 }
+
+# Email configuration
+# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # For development
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'  # For production
+
+# SMTP settings for Zoho Mail
+EMAIL_HOST = 'smtp.zoho.com'  # Server globale invece di .eu
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'serra.marco@lacrazyfamily.com'  # Account principale Zoho
+EMAIL_HOST_PASSWORD = 'Mumble100%'  # Password Zoho
+
+# Default email settings
+DEFAULT_FROM_EMAIL = 'My Crazy Family <no-reply@lacrazyfamily.com>'
+EMAIL_SUBJECT_PREFIX = '[My Crazy Family] '

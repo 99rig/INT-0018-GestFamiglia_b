@@ -23,8 +23,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('apps.users.api.urls')),
     path('api/', include('apps.categories.api.urls')),
+    path('api/', include('apps.reports.api.urls')),  # ← Sposto prima per priorità
     path('api/', include('apps.expenses.api.urls')),
-    path('api/', include('apps.reports.api.urls')),
     path('api/updates/', include('apps.updates.api.urls')),
     path('api-auth/', include('rest_framework.urls')),
 ]

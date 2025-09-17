@@ -103,6 +103,15 @@ class Expense(models.Model):
         verbose_name="Budget di appartenenza",
         help_text="Budget mensile o evento a cui appartiene questa spesa"
     )
+    planned_expense = models.ForeignKey(
+        'reports.PlannedExpense',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='actual_payments',
+        verbose_name="Spesa Pianificata",
+        help_text="Spesa pianificata a cui questo pagamento contribuisce"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

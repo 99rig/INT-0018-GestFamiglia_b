@@ -5,10 +5,15 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 from rest_framework.views import APIView
-from .views import UserViewSet, RegisterView, UserProfileView, MCFTokenObtainPairView, LogoutView
+from .views import (
+    UserViewSet, RegisterView, UserProfileView, MCFTokenObtainPairView, LogoutView,
+    FamilyViewSet, FamilyInvitationViewSet
+)
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
+router.register(r'families', FamilyViewSet, basename='family')
+router.register(r'family-invitations', FamilyInvitationViewSet, basename='family-invitation')
 
 urlpatterns = [
     path('', include(router.urls)),

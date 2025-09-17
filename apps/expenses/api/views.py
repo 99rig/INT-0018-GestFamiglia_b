@@ -29,10 +29,17 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     ordering = ['-date', '-created_at']
     
     def get_queryset(self):
-        """Restituisce le spese dell'utente e quelle condivise con lui"""
+        """Restituisce le spese dell'utente e quelle condivise con lui, solo della stessa famiglia"""
         user = self.request.user
+
+        # Se l'utente non appartiene a nessuna famiglia, vede solo le sue spese
+        if not user.family:
+            return Expense.objects.filter(user=user)
+
+        # Filtra per utenti della stessa famiglia
+        family_users = user.family.members.all()
         return Expense.objects.filter(
-            Q(user=user) | Q(shared_with=user)
+            Q(user__in=family_users) | Q(shared_with__in=family_users)
         ).distinct()
     
     def get_serializer_class(self):
@@ -46,8 +53,16 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def my_expenses(self, request):
-        """Restituisce solo le spese create dall'utente"""
-        expenses = Expense.objects.filter(user=request.user)
+        """Restituisce solo le spese create dall'utente della stessa famiglia"""
+        user = request.user
+
+        # Se l'utente non appartiene a nessuna famiglia, vede solo le sue spese
+        if not user.family:
+            expenses = Expense.objects.filter(user=user)
+        else:
+            # Filtra per utenti della stessa famiglia
+            family_users = user.family.members.all()
+            expenses = Expense.objects.filter(user__in=family_users)
         serializer = ExpenseSerializer(expenses, many=True)
         return Response(serializer.data)
     

@@ -171,6 +171,48 @@ class PlannedExpense(models.Model):
     def __str__(self):
         return f"{self.spending_plan.name} - {self.description}"
 
+    def get_related_expenses(self):
+        """Restituisce tutte le spese reali collegate a questa spesa pianificata"""
+        from apps.expenses.models import Expense
+        return Expense.objects.filter(planned_expense=self)
+
+    def get_total_paid(self):
+        """Calcola l'importo totale già pagato"""
+        total = self.get_related_expenses().aggregate(
+            total=models.Sum('amount')
+        )['total'] or Decimal('0.00')
+        return total
+
+    def get_remaining_amount(self):
+        """Calcola l'importo rimanente da pagare"""
+        return self.amount - self.get_total_paid()
+
+    def get_completion_percentage(self):
+        """Calcola la percentuale di completamento"""
+        if self.amount > 0:
+            return float((self.get_total_paid() / self.amount) * 100)
+        return 0.0
+
+    def is_fully_paid(self):
+        """Verifica se la spesa è completamente pagata"""
+        return self.get_remaining_amount() <= Decimal('0.00')
+
+    def is_partially_paid(self):
+        """Verifica se la spesa è parzialmente pagata"""
+        paid = self.get_total_paid()
+        return paid > Decimal('0.00') and paid < self.amount
+
+    def get_payment_status(self):
+        """Restituisce lo stato del pagamento"""
+        if self.is_fully_paid():
+            return 'completed'
+        elif self.is_partially_paid():
+            return 'partial'
+        elif self.due_date and self.due_date < timezone.now().date():
+            return 'overdue'
+        else:
+            return 'pending'
+
     def mark_as_completed(self, actual_expense=None):
         """Segna la spesa come completata"""
         self.is_completed = True
@@ -180,9 +222,12 @@ class PlannedExpense(models.Model):
 
     def get_status_display_class(self):
         """Ritorna la classe CSS per lo stato"""
-        if self.is_completed:
+        status = self.get_payment_status()
+        if status == 'completed':
             return 'completed'
-        elif self.due_date and self.due_date < timezone.now().date():
+        elif status == 'partial':
+            return 'partial'
+        elif status == 'overdue':
             return 'overdue'
         elif self.priority == 'urgent':
             return 'urgent'

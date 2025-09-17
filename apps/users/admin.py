@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
-from .models import User, UserProfile
+from .models import User, UserProfile, Family, FamilyInvitation
 
 
 class UserProfileInline(admin.StackedInline):
@@ -96,3 +96,76 @@ class UserProfileAdmin(admin.ModelAdmin):
     def user_display(self, obj):
         return f"{obj.user.get_full_name() or obj.user.email}"
     user_display.short_description = "Utente"
+
+
+@admin.register(Family)
+class FamilyAdmin(admin.ModelAdmin):
+    """Admin per Family"""
+    list_display = [
+        'name', 'invite_code', 'created_by', 'members_count_display',
+        'is_active', 'created_at'
+    ]
+    list_filter = ['is_active', 'created_at']
+    search_fields = ['name', 'invite_code', 'created_by__email']
+    readonly_fields = ['invite_code', 'created_at']
+
+    fieldsets = (
+        ('Famiglia', {
+            'fields': ('name', 'created_by', 'is_active')
+        }),
+        ('Invito', {
+            'fields': ('invite_code',)
+        }),
+        ('Metadati', {
+            'fields': ('created_at',),
+            'classes': ('collapse',)
+        })
+    )
+
+    def members_count_display(self, obj):
+        return obj.get_members_count()
+    members_count_display.short_description = "Membri"
+
+
+@admin.register(FamilyInvitation)
+class FamilyInvitationAdmin(admin.ModelAdmin):
+    """Admin per FamilyInvitation"""
+    list_display = [
+        'email', 'family', 'invited_by', 'family_role',
+        'status', 'expires_at', 'is_expired_display', 'created_at'
+    ]
+    list_filter = ['status', 'family_role', 'created_at', 'expires_at']
+    search_fields = ['email', 'family__name', 'invited_by__email']
+    readonly_fields = ['token', 'created_at', 'accepted_at', 'is_expired_display']
+
+    fieldsets = (
+        ('Invito', {
+            'fields': ('family', 'invited_by', 'email', 'family_role')
+        }),
+        ('Stato', {
+            'fields': ('status', 'token', 'expires_at', 'accepted_at')
+        }),
+        ('Metadati', {
+            'fields': ('created_at', 'is_expired_display'),
+            'classes': ('collapse',)
+        })
+    )
+
+    def is_expired_display(self, obj):
+        if obj.is_expired():
+            return format_html('<span style="color: red;">● Scaduto</span>')
+        else:
+            return format_html('<span style="color: green;">● Valido</span>')
+    is_expired_display.short_description = "Stato Scadenza"
+
+    actions = ['mark_as_expired', 'mark_as_pending']
+
+    def mark_as_expired(self, request, queryset):
+        updated = queryset.update(status='expired')
+        self.message_user(request, f'{updated} inviti marcati come scaduti.')
+    mark_as_expired.short_description = "Marca come scaduti"
+
+    def mark_as_pending(self, request, queryset):
+        updated = queryset.update(status='pending')
+        self.message_user(request, f'{updated} inviti marcati come pending.')
+    mark_as_pending.short_description = "Marca come pending"
