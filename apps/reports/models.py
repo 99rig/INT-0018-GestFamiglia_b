@@ -1,38 +1,49 @@
 from django.db import models
 from django.conf import settings
 from django.db.models import Sum, Count, Avg
+from django.utils import timezone
 from apps.categories.models import Category
 from apps.expenses.models import Expense
 from decimal import Decimal
 
 
-class Budget(models.Model):
+class SpendingPlan(models.Model):
     """
-    Modello per i budget famigliari
+    Piano di spese per periodi personalizzabili - contenitore di spese pianificate
     """
+    PLAN_TYPES = [
+        ('monthly', 'Mensile'),
+        ('seasonal', 'Stagionale'),
+        ('event', 'Evento/Occasione'),
+        ('yearly', 'Annuale'),
+        ('custom', 'Personalizzato'),
+    ]
+
     name = models.CharField(
         max_length=100,
-        verbose_name="Nome budget"
+        verbose_name="Nome piano spese"
     )
     description = models.TextField(
         blank=True,
         verbose_name="Descrizione"
     )
-    year = models.IntegerField(
-        verbose_name="Anno"
+    plan_type = models.CharField(
+        max_length=20,
+        choices=PLAN_TYPES,
+        default='custom',
+        verbose_name="Tipo piano"
     )
-    month = models.IntegerField(
-        verbose_name="Mese",
-        choices=[(i, i) for i in range(1, 13)]
+    start_date = models.DateField(
+        verbose_name="Data inizio",
+        default='2025-09-01'
     )
-    total_amount = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        verbose_name="Importo totale"
+    end_date = models.DateField(
+        verbose_name="Data fine",
+        default='2025-09-30'
     )
     users = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
-        related_name='budgets',
+        related_name='spending_plans',
         verbose_name="Utenti"
     )
     is_active = models.BooleanField(
@@ -41,35 +52,147 @@ class Budget(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
-        verbose_name = "Budget"
-        verbose_name_plural = "Budget"
-        ordering = ['-year', '-month']
-        unique_together = ['year', 'month', 'name']
-    
+        verbose_name = "Piano Spese"
+        verbose_name_plural = "Piani Spese"
+        ordering = ['-start_date', '-created_at']
+
     def __str__(self):
-        return f"{self.name} - {self.month}/{self.year}"
-    
-    def get_spent_amount(self):
-        """Calcola l'importo speso per questo budget"""
-        return Expense.objects.filter(
-            user__in=self.users.all(),
-            date__year=self.year,
-            date__month=self.month,
-            status='pagata'
+        return f"{self.name} ({self.start_date} - {self.end_date})"
+
+    def get_total_planned_amount(self):
+        """Calcola l'importo totale pianificato"""
+        return self.planned_expenses.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+    def get_completed_expenses_amount(self):
+        """Calcola l'importo delle spese completate"""
+        return self.planned_expenses.filter(
+            is_completed=True
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-    
-    def get_remaining_amount(self):
-        """Calcola l'importo rimanente del budget"""
-        return self.total_amount - self.get_spent_amount()
-    
-    def get_percentage_used(self):
-        """Calcola la percentuale di budget utilizzata"""
-        spent = self.get_spent_amount()
-        if self.total_amount > 0:
-            return (spent / self.total_amount * 100)
+
+    def get_pending_expenses_amount(self):
+        """Calcola l'importo delle spese ancora da completare"""
+        return self.planned_expenses.filter(
+            is_completed=False
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+    def get_completion_percentage(self):
+        """Calcola la percentuale di completamento"""
+        total_planned = self.get_total_planned_amount()
+        if total_planned > 0:
+            completed = self.get_completed_expenses_amount()
+            return (completed / total_planned * 100)
         return Decimal('0.00')
+
+    def is_current(self):
+        """Verifica se il piano è attivo nel periodo corrente"""
+        from django.utils import timezone
+        today = timezone.now().date()
+        return self.start_date <= today <= self.end_date
+
+
+class PlannedExpense(models.Model):
+    """
+    Spesa pianificata all'interno di un piano di spese
+    """
+    PRIORITY_CHOICES = [
+        ('low', 'Bassa'),
+        ('medium', 'Media'),
+        ('high', 'Alta'),
+        ('urgent', 'Urgente'),
+    ]
+
+    spending_plan = models.ForeignKey(
+        SpendingPlan,
+        on_delete=models.CASCADE,
+        related_name='planned_expenses',
+        verbose_name="Piano spese"
+    )
+    description = models.CharField(
+        max_length=200,
+        verbose_name="Descrizione spesa"
+    )
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        verbose_name="Importo stimato",
+        help_text="Importo stimato per questa spesa"
+    )
+    category = models.ForeignKey(
+        'categories.Category',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Categoria"
+    )
+    subcategory = models.ForeignKey(
+        'categories.Subcategory',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Sottocategoria"
+    )
+    priority = models.CharField(
+        max_length=10,
+        choices=PRIORITY_CHOICES,
+        default='medium',
+        verbose_name="Priorità"
+    )
+    due_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Data scadenza"
+    )
+    notes = models.TextField(
+        blank=True,
+        verbose_name="Note"
+    )
+    is_completed = models.BooleanField(
+        default=False,
+        verbose_name="Completata"
+    )
+    actual_expense = models.ForeignKey(
+        'expenses.Expense',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Spesa reale",
+        help_text="Spesa effettiva collegata a questa pianificazione"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Spesa Pianificata"
+        verbose_name_plural = "Spese Pianificate"
+        ordering = ['due_date', '-priority', 'created_at']
+
+    def __str__(self):
+        return f"{self.spending_plan.name} - {self.description}"
+
+    def mark_as_completed(self, actual_expense=None):
+        """Segna la spesa come completata"""
+        self.is_completed = True
+        if actual_expense:
+            self.actual_expense = actual_expense
+        self.save()
+
+    def get_status_display_class(self):
+        """Ritorna la classe CSS per lo stato"""
+        if self.is_completed:
+            return 'completed'
+        elif self.due_date and self.due_date < timezone.now().date():
+            return 'overdue'
+        elif self.priority == 'urgent':
+            return 'urgent'
+        elif self.priority == 'high':
+            return 'high-priority'
+        return 'pending'
+
+
+# Alias per compatibilità (da deprecare)
+Budget = SpendingPlan
 
 
 class BudgetCategory(models.Model):
@@ -108,8 +231,8 @@ class BudgetCategory(models.Model):
         return Expense.objects.filter(
             user__in=self.budget.users.all(),
             category=self.category,
-            date__year=self.budget.year,
-            date__month=self.budget.month,
+            date__gte=self.budget.start_date,
+            date__lte=self.budget.end_date,
             status='pagata'
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
     
