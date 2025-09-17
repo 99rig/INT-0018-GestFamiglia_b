@@ -24,7 +24,7 @@ class AppVersion(models.Model):
     @classmethod
     def get_latest_version(cls):
         """Ritorna l'ultima versione disponibile"""
-        return cls.objects.first()
+        return cls.objects.using('updates_db').first()
     
     def is_newer_than(self, version_code):
         """Controlla se questa versione è più nuova"""

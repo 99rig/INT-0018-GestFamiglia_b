@@ -93,8 +93,14 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+    },
+    'updates_db': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'updates.sqlite3',
     }
 }
+
+DATABASE_ROUTERS = ['config.db_router.UpdatesDBRouter']
 
 
 # Password validation
@@ -137,6 +143,9 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # Media files
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# APK releases (committed to git)
+APK_ROOT = BASE_DIR / 'apk_releases'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field

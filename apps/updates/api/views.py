@@ -73,6 +73,32 @@ def download_apk(request, version_code):
     return response
 
 
+@csrf_exempt
+def download_latest_apk(request):
+    """Download dell'APK dell'ultima versione disponibile"""
+
+    latest_version = AppVersion.objects.using('updates_db').order_by('-version_code').first()
+
+    if not latest_version:
+        raise Http404("Nessuna versione disponibile")
+
+    if not latest_version.apk_file:
+        raise Http404("File APK non disponibile")
+
+    # Verifica che il file esista fisicamente
+    if not os.path.exists(latest_version.apk_file.path):
+        raise Http404("File APK non trovato sul server")
+
+    response = FileResponse(
+        open(latest_version.apk_file.path, 'rb'),
+        content_type='application/vnd.android.package-archive',
+        as_attachment=True,
+        filename=f'MyCrazyFamily-v{latest_version.version_name}.apk'
+    )
+
+    return response
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def app_info(request):
