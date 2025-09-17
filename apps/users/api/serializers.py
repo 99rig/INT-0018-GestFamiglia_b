@@ -24,15 +24,35 @@ class UserSerializer(serializers.ModelSerializer):
     """Serializer per il modello User con profilo e famiglia"""
     profile = UserProfileSerializer(read_only=True)
     family_name = serializers.CharField(source='family.name', read_only=True)
+    family_detail = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
             'is_active', 'date_joined', 'last_login', 'profile',
-            'family', 'family_name'
+            'family', 'family_name', 'family_detail'
         ]
         read_only_fields = ['id', 'date_joined', 'last_login', 'family']
+
+    def get_family_detail(self, obj):
+        """Restituisce i dettagli della famiglia inclusi i membri"""
+        if not obj.family:
+            return None
+
+        return {
+            'id': obj.family.id,
+            'name': obj.family.name,
+            'members': [
+                {
+                    'id': member.id,
+                    'name': f"{member.first_name} {member.last_name}".strip(),
+                    'email': member.email,
+                    'family_role': member.profile.family_role if hasattr(member, 'profile') else ''
+                }
+                for member in obj.family.members.all()
+            ]
+        }
 
 
 class UserCreateSerializer(serializers.ModelSerializer):

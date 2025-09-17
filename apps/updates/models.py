@@ -6,8 +6,10 @@ from django.conf import settings
 
 def apk_upload_path(instance, filename):
     """Definisce il percorso di upload per gli APK"""
-    # Salva in backend/apk_releases/ invece che in media/
-    return os.path.join('..', 'apk_releases', filename)
+    # Usa la configurazione APK_ROOT dai settings
+    apk_dir = settings.APK_ROOT
+    os.makedirs(apk_dir, exist_ok=True)
+    return os.path.join(apk_dir, filename)
 
 
 class AppVersion(models.Model):
