@@ -39,7 +39,7 @@ def check_update(request):
             'release_notes': latest_version.release_notes,
             'is_mandatory': latest_version.is_mandatory,
             'download_url': f'/updates/download/{latest_version.version_code}/',
-            'file_size': latest_version.apk_file.size if latest_version.apk_file else 0
+            'file_size': latest_version.apk_file_size
         } if has_update else None,
         'current_version_code': current_version
     }
@@ -58,13 +58,14 @@ def download_apk(request, version_code):
     
     if not app_version.apk_file:
         raise Http404("File APK non disponibile")
-    
-    # Verifica che il file esista fisicamente
-    if not os.path.exists(app_version.apk_file.path):
+
+    # Usa il percorso corretto nella cartella apk_releases
+    apk_path = app_version.apk_file_path
+    if not apk_path or not os.path.exists(apk_path):
         raise Http404("File APK non trovato sul server")
-    
+
     response = FileResponse(
-        open(app_version.apk_file.path, 'rb'),
+        open(apk_path, 'rb'),
         content_type='application/vnd.android.package-archive',
         as_attachment=True,
         filename=f'MyCrazyFamily-v{app_version.version_name}.apk'
@@ -85,12 +86,13 @@ def download_latest_apk(request):
     if not latest_version.apk_file:
         raise Http404("File APK non disponibile")
 
-    # Verifica che il file esista fisicamente
-    if not os.path.exists(latest_version.apk_file.path):
+    # Usa il percorso corretto nella cartella apk_releases
+    apk_path = latest_version.apk_file_path
+    if not apk_path or not os.path.exists(apk_path):
         raise Http404("File APK non trovato sul server")
 
     response = FileResponse(
-        open(latest_version.apk_file.path, 'rb'),
+        open(apk_path, 'rb'),
         content_type='application/vnd.android.package-archive',
         as_attachment=True,
         filename=f'MyCrazyFamily-v{latest_version.version_name}.apk'

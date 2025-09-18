@@ -39,3 +39,23 @@ class AppVersion(models.Model):
     def is_newer_than(self, version_code):
         """Controlla se questa versione è più nuova"""
         return self.version_code > version_code
+
+    @property
+    def apk_file_path(self):
+        """Ritorna il percorso corretto del file APK nella cartella apk_releases"""
+        if self.apk_file and 'apk_releases/' in str(self.apk_file):
+            # Costruisce il percorso corretto nella cartella apk_releases
+            filename = os.path.basename(str(self.apk_file))
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            while not base_dir.endswith('backend'):
+                base_dir = os.path.dirname(base_dir)
+            return os.path.join(base_dir, 'apk_releases', filename)
+        return None
+
+    @property
+    def apk_file_size(self):
+        """Ritorna la dimensione del file APK"""
+        apk_path = self.apk_file_path
+        if apk_path and os.path.exists(apk_path):
+            return os.path.getsize(apk_path)
+        return 0
