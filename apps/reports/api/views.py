@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Sum, Count, Avg, Q
-from datetime import datetime
+from datetime import datetime, timedelta
 from apps.reports.models import Budget, BudgetCategory, SavingGoal, PlannedExpense, SpendingPlan
 from apps.expenses.models import Expense
 from .serializers import (
@@ -543,6 +543,167 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
 
         serializer = SpendingPlanSerializer(new_plan)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def smart_clone(self, request, pk=None):
+        """Clona intelligentemente un piano di spesa con riconoscimento pattern e date"""
+        plan = self.get_object()
+        from apps.reports.utils.plan_pattern_recognition import generate_intelligent_clone_data
+
+        # Controlla se è solo preview o creazione effettiva
+        preview_only = request.data.get('preview_only', False)
+
+        # Usa il nuovo utility per generare i dati del clone
+        clone_data = generate_intelligent_clone_data(
+            plan_name=plan.name,
+            start_date=plan.start_date,
+            end_date=plan.end_date,
+            plan_type=plan.plan_type
+        )
+
+        new_title = clone_data['new_title']
+        new_start_date = clone_data['new_start_date']
+        new_end_date = clone_data['new_end_date']
+        pattern_detection = clone_data['pattern_detection']
+
+        # Verifica se esiste già un piano sovrapposto
+        existing_plan = SpendingPlan.objects.filter(
+            name=new_title,
+            start_date__lte=new_end_date,
+            end_date__gte=new_start_date
+        ).first()
+
+        if existing_plan:
+            return Response({
+                'detail': f'Esiste già un piano "{new_title}" per il periodo selezionato.',
+                'suggested_title': new_title,
+                'suggested_start_date': new_start_date.isoformat(),
+                'suggested_end_date': new_end_date.isoformat(),
+                'conflict_with_existing_plan': {
+                    'id': existing_plan.id,
+                    'name': existing_plan.name,
+                    'period': f"{existing_plan.start_date} - {existing_plan.end_date}"
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Se è solo preview, restituisci i dati senza creare nulla
+        if preview_only:
+            # Simula le spese clonate senza salvarle
+            simulated_expenses = []
+            for planned_expense in plan.planned_expenses.all():
+                # Calcola la nuova data di scadenza
+                if planned_expense.due_date:
+                    days_from_start = (planned_expense.due_date - plan.start_date).days
+                    new_due_date = new_start_date + timedelta(days=days_from_start)
+                    if new_due_date > new_end_date:
+                        new_due_date = new_end_date
+                else:
+                    new_due_date = None
+
+                simulated_expenses.append({
+                    'id': None,  # Non esiste ancora
+                    'description': planned_expense.description,
+                    'amount': str(planned_expense.amount),
+                    'category': planned_expense.category.id if planned_expense.category else None,
+                    'category_name': planned_expense.category.name if planned_expense.category else None,
+                    'subcategory': planned_expense.subcategory.id if planned_expense.subcategory else None,
+                    'priority': planned_expense.priority,
+                    'due_date': new_due_date.isoformat() if new_due_date else None,
+                    'notes': planned_expense.notes
+                })
+
+            # Prepara risposta preview
+            preview_data = {
+                'cloned_plan': {
+                    'id': None,  # Non esiste ancora
+                    'name': new_title,
+                    'description': plan.description,
+                    'plan_type': plan.plan_type,
+                    'total_budget': str(plan.total_budget) if plan.total_budget else None,
+                    'start_date': new_start_date.isoformat(),
+                    'end_date': new_end_date.isoformat(),
+                    'is_shared': plan.is_shared,
+                    'planned_expenses_detail': simulated_expenses
+                },
+                'cloning_details': {
+                    'original_plan': {
+                        'id': plan.id,
+                        'name': plan.name,
+                        'period': f"{plan.start_date} - {plan.end_date}"
+                    },
+                    'pattern_detection': pattern_detection,
+                    'new_period': {
+                        'start_date': new_start_date.isoformat(),
+                        'end_date': new_end_date.isoformat(),
+                        'title': new_title
+                    },
+                    'expenses_cloned': len(simulated_expenses),
+                    'expenses_with_dates_adjusted': len([e for e in simulated_expenses if e['due_date']])
+                }
+            }
+
+            return Response(preview_data, status=status.HTTP_200_OK)
+
+        # Se non è preview, crea effettivamente il piano
+        new_plan = SpendingPlan.objects.create(
+            name=new_title,
+            description=plan.description,
+            plan_type=plan.plan_type,
+            total_budget=plan.total_budget,
+            start_date=new_start_date,
+            end_date=new_end_date,
+            is_shared=plan.is_shared,
+            is_active=True,
+            created_by=request.user
+        )
+
+        # Copia gli utenti
+        new_plan.users.set(plan.users.all())
+
+        # Clona le spese pianificate
+        cloned_expenses = []
+        for planned_expense in plan.planned_expenses.all():
+            if planned_expense.due_date:
+                days_from_start = (planned_expense.due_date - plan.start_date).days
+                new_due_date = new_start_date + timedelta(days=days_from_start)
+                if new_due_date > new_end_date:
+                    new_due_date = new_end_date
+            else:
+                new_due_date = None
+
+            cloned_expense = PlannedExpense.objects.create(
+                spending_plan=new_plan,
+                description=planned_expense.description,
+                amount=planned_expense.amount,
+                category=planned_expense.category,
+                subcategory=planned_expense.subcategory,
+                priority=planned_expense.priority,
+                due_date=new_due_date,
+                notes=planned_expense.notes
+            )
+            cloned_expenses.append(cloned_expense)
+
+        # Prepara risposta con piano creato
+        response_data = {
+            'cloned_plan': SpendingPlanSerializer(new_plan).data,
+            'cloning_details': {
+                'original_plan': {
+                    'id': plan.id,
+                    'name': plan.name,
+                    'period': f"{plan.start_date} - {plan.end_date}"
+                },
+                'pattern_detection': pattern_detection,
+                'new_period': {
+                    'start_date': new_start_date.isoformat(),
+                    'end_date': new_end_date.isoformat(),
+                    'title': new_title
+                },
+                'expenses_cloned': len(cloned_expenses),
+                'expenses_with_dates_adjusted': len([e for e in cloned_expenses if e.due_date])
+            }
+        }
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'])
     def statistics(self, request):
