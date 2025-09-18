@@ -23,6 +23,7 @@ class Command(BaseCommand):
             # Trasporti
             'Carburante': ['benzina', 'gasolio', 'diesel', 'gpl', 'metano', 'gas', 'rifornimento'],
             'Mezzi Pubblici': ['autobus', 'bus', 'metro', 'metropolitana', 'treno', 'tram', 'atac', 'atm'],
+            'Finanziamento Auto': ['rata auto', 'rata macchina', 'rata', 'finanziamento', 'prestito auto', 'leasing'],
             'Manutenzione Auto': ['meccanico', 'tagliando', 'revisione', 'gomme', 'pneumatici', 'olio'],
             'Parcheggi': ['parcheggio', 'garage', 'box', 'sosta'],
             'Pedaggi Autostradali': ['casello', 'telepass', 'viacard', 'autostrada'],

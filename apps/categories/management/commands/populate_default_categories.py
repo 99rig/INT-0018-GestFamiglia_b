@@ -70,6 +70,7 @@ class Command(BaseCommand):
                 'subcategories': [
                     'Carburante',
                     'Mezzi Pubblici',
+                    'Finanziamento Auto',
                     'Manutenzione Auto',
                     'Assicurazione Auto',
                     'Bollo Auto',
