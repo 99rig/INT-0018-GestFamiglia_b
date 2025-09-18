@@ -306,8 +306,37 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
         # Validazione dei dati del pagamento
         amount = request.data.get('amount')
         description = request.data.get('description', f'Pagamento per {planned_expense.description}')
-        category = request.data.get('category', planned_expense.category)
-        subcategory = request.data.get('subcategory', planned_expense.subcategory)
+
+        # Handle category - can be an ID from request or Category instance from planned_expense
+        category_data = request.data.get('category')
+        if category_data is not None:
+            # If category comes from request, it's likely an ID, convert to Category instance
+            from apps.categories.models import Category
+            if isinstance(category_data, (int, str)):
+                try:
+                    category = Category.objects.get(id=int(category_data))
+                except Category.DoesNotExist:
+                    category = planned_expense.category
+            else:
+                category = category_data
+        else:
+            category = planned_expense.category
+
+        # Handle subcategory - can be an ID from request or Subcategory instance from planned_expense
+        subcategory_data = request.data.get('subcategory')
+        if subcategory_data is not None:
+            # If subcategory comes from request, it's likely an ID, convert to Subcategory instance
+            from apps.categories.models import Subcategory
+            if isinstance(subcategory_data, (int, str)):
+                try:
+                    subcategory = Subcategory.objects.get(id=int(subcategory_data))
+                except Subcategory.DoesNotExist:
+                    subcategory = planned_expense.subcategory
+            else:
+                subcategory = subcategory_data
+        else:
+            subcategory = planned_expense.subcategory
+
         date = request.data.get('date')
 
         if not amount:
@@ -342,8 +371,8 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
         expense_data = {
             'description': description,
             'amount': amount,
-            'category': category.id if category else None,
-            'subcategory': subcategory.id if subcategory else None,
+            'category': category,
+            'subcategory': subcategory,
             'user': request.user,
             'date': date or datetime.now().date(),
             'status': 'pagata',

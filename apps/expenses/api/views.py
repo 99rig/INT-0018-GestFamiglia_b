@@ -23,7 +23,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     """ViewSet per la gestione delle spese"""
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['category', 'subcategory', 'status', 'payment_method', 'is_recurring', 'date']
+    filterset_fields = ['category', 'subcategory', 'status', 'payment_method', 'is_recurring', 'date', 'planned_expense']
     search_fields = ['description', 'notes', 'category__name', 'subcategory__name']
     ordering_fields = ['date', 'amount', 'created_at']
     ordering = ['-date', '-created_at']
