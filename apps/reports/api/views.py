@@ -291,6 +291,10 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
         family_users = user.family.members.all()
         return PlannedExpense.objects.filter(
             spending_plan__users__in=family_users
+        ).select_related(
+            'spending_plan', 'category', 'subcategory'
+        ).prefetch_related(
+            'actual_expense'  # Per get_related_expenses()
         ).distinct()
 
     def get_serializer_class(self):
@@ -490,8 +494,16 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
             family_users = user.family.members.all()
             family_plans = Q(users__in=family_users, is_shared=True)
 
-        # Restituisci piani personali + piani famiglia
-        return SpendingPlan.objects.filter(personal_plans | family_plans).distinct()
+        # Restituisci piani personali + piani famiglia con ottimizzazioni
+        return SpendingPlan.objects.filter(
+            personal_plans | family_plans
+        ).select_related(
+            'created_by'
+        ).prefetch_related(
+            'users',
+            'planned_expenses__category',
+            'planned_expenses__subcategory'
+        ).distinct()
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
@@ -733,6 +745,46 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
         }
 
         return Response(response_data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def details(self, request, pk=None):
+        """Endpoint ottimizzato per ottenere piano + spese pianificate + spese reali in una sola chiamata"""
+        plan = self.get_object()
+
+        # Precarica tutto quello che serve con una query ottimizzata
+        plan_data = SpendingPlan.objects.filter(
+            pk=plan.pk
+        ).select_related(
+            'created_by'
+        ).prefetch_related(
+            'users',
+            'planned_expenses__category',
+            'planned_expenses__subcategory',
+            # Precarica le spese reali collegate alle pianificate
+            'planned_expenses__expense_set'
+        ).first()
+
+        # Serializza il piano con tutte le spese pianificate usando il serializer ottimizzato
+        from .serializers import SpendingPlanDetailSerializer
+        plan_serializer = SpendingPlanDetailSerializer(plan_data)
+
+        # Carica le spese reali del piano (non collegate a spese pianificate)
+        from apps.expenses.models import Expense
+        unplanned_expenses = Expense.objects.filter(
+            spending_plan=plan,
+            planned_expense__isnull=True  # Solo spese NON collegate a pianificate
+        ).select_related(
+            'category', 'subcategory', 'user'
+        )
+
+        # Serializza le spese non pianificate
+        from apps.expenses.api.serializers import ExpenseSerializer
+        unplanned_serializer = ExpenseSerializer(unplanned_expenses, many=True)
+
+        return Response({
+            'plan': plan_serializer.data,
+            'unplanned_expenses': unplanned_serializer.data
+        })
 
     @action(detail=False, methods=['get'])
     def statistics(self, request):

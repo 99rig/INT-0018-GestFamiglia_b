@@ -86,6 +86,21 @@ class PlannedExpenseSerializer(serializers.ModelSerializer):
         return obj.get_related_expenses().count()
 
 
+class PlannedExpenseLightSerializer(serializers.ModelSerializer):
+    """Serializer leggero per le spese pianificate (senza calcoli costosi)"""
+    category_detail = CategorySerializer(source='category', read_only=True)
+    subcategory_detail = CategorySerializer(source='subcategory', read_only=True)
+
+    class Meta:
+        model = PlannedExpense
+        fields = [
+            'id', 'spending_plan', 'description', 'amount', 'category', 'category_detail',
+            'subcategory', 'subcategory_detail', 'priority', 'due_date',
+            'notes', 'is_completed', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
 class PlannedExpenseCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer per creare/aggiornare spese pianificate"""
 
@@ -357,6 +372,65 @@ class SpendingPlanSerializer(serializers.ModelSerializer):
     def get_is_current(self, obj):
         """Se il piano è attivo nel periodo corrente"""
         return obj.is_current()
+
+
+class SpendingPlanDetailSerializer(serializers.ModelSerializer):
+    """Serializer ottimizzato per i dettagli del piano (endpoint /details/)"""
+    users_detail = UserSerializer(source='users', many=True, read_only=True)
+    created_by_detail = UserSerializer(source='created_by', read_only=True)
+    planned_expenses_detail = PlannedExpenseLightSerializer(source='planned_expenses', many=True, read_only=True)
+
+    # Statistiche calcolate dal backend
+    total_planned_amount = serializers.SerializerMethodField()
+    total_unplanned_expenses_amount = serializers.SerializerMethodField()
+    total_estimated_amount = serializers.SerializerMethodField()
+    completed_expenses_amount = serializers.SerializerMethodField()
+    pending_expenses_amount = serializers.SerializerMethodField()
+    completion_percentage = serializers.SerializerMethodField()
+    completed_count = serializers.SerializerMethodField()
+    total_expenses_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SpendingPlan
+        fields = [
+            'id', 'name', 'description', 'plan_type', 'start_date', 'end_date',
+            'total_budget', 'users', 'users_detail', 'is_shared', 'is_active',
+            'created_by', 'created_by_detail', 'created_at', 'updated_at',
+            'planned_expenses_detail',
+            'total_planned_amount', 'total_unplanned_expenses_amount', 'total_estimated_amount',
+            'completed_expenses_amount', 'pending_expenses_amount', 'completion_percentage',
+            'completed_count', 'total_expenses_count'
+        ]
+        read_only_fields = [
+            'id', 'created_at', 'updated_at', 'total_planned_amount',
+            'total_unplanned_expenses_amount', 'total_estimated_amount',
+            'completed_expenses_amount', 'pending_expenses_amount',
+            'completion_percentage', 'completed_count', 'total_expenses_count'
+        ]
+
+    def get_total_planned_amount(self, obj):
+        return str(obj.get_total_planned_amount())
+
+    def get_total_unplanned_expenses_amount(self, obj):
+        return str(obj.get_total_unplanned_expenses_amount())
+
+    def get_total_estimated_amount(self, obj):
+        return str(obj.get_total_estimated_amount())
+
+    def get_completed_expenses_amount(self, obj):
+        return str(obj.get_completed_expenses_amount())
+
+    def get_pending_expenses_amount(self, obj):
+        return str(obj.get_pending_expenses_amount())
+
+    def get_completion_percentage(self, obj):
+        return float(obj.get_completion_percentage())
+
+    def get_completed_count(self, obj):
+        return obj.get_completed_count()
+
+    def get_total_expenses_count(self, obj):
+        return obj.get_total_expenses_count()
 
 
 class SpendingPlanCreateUpdateSerializer(serializers.ModelSerializer):
