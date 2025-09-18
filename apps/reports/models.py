@@ -100,16 +100,18 @@ class SpendingPlan(models.Model):
         return planned + unplanned
 
     def get_completed_expenses_amount(self):
-        """Calcola l'importo delle spese completate (pianificate + non pianificate)"""
-        # Spese pianificate completate
-        planned_completed = self.planned_expenses.filter(
-            is_completed=True
+        """Calcola l'importo totale già pagato (pianificate + non pianificate)"""
+        from apps.expenses.models import Expense
+
+        # Importo pagato per spese pianificate (query diretta più efficiente)
+        planned_paid = Expense.objects.filter(
+            planned_expense__spending_plan=self
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 
         # Spese non pianificate pagate
         unplanned_completed = self.get_total_unplanned_expenses_amount()
 
-        return planned_completed + unplanned_completed
+        return planned_paid + unplanned_completed
 
     def get_completed_count(self):
         """Calcola il numero di spese completate (pianificate + non pianificate)"""
@@ -136,10 +138,10 @@ class SpendingPlan(models.Model):
         return planned_count + unplanned_count
 
     def get_pending_expenses_amount(self):
-        """Calcola l'importo delle spese ancora da completare"""
-        return self.planned_expenses.filter(
-            is_completed=False
-        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        """Calcola l'importo rimanente da pagare (differenza tra stimato e pagato)"""
+        total_estimated = self.get_total_estimated_amount()
+        total_paid = self.get_completed_expenses_amount()
+        return max(total_estimated - total_paid, Decimal('0.00'))
 
     def get_completion_percentage(self):
         """Calcola la percentuale di completamento"""
