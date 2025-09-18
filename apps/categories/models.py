@@ -80,6 +80,18 @@ class Subcategory(models.Model):
         blank=True,
         verbose_name="Descrizione"
     )
+    aliases = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Alias",
+        help_text="Lista di alias per la ricerca (es. ['benzina', 'gasolio'] per 'carburante')"
+    )
+    icon = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name="Icona",
+        help_text="Nome dell'icona Material Design da visualizzare"
+    )
     is_active = models.BooleanField(
         default=True,
         verbose_name="Attiva"

@@ -9,7 +9,10 @@ def apk_upload_path(instance, filename):
     # Usa la configurazione APK_ROOT dai settings
     apk_dir = settings.APK_ROOT
     os.makedirs(apk_dir, exist_ok=True)
-    return os.path.join(apk_dir, filename)
+
+    # Estrae solo il nome del file per evitare path traversal
+    safe_filename = os.path.basename(filename)
+    return os.path.join('apk_releases', safe_filename)
 
 
 class AppVersion(models.Model):

@@ -4,10 +4,10 @@ from apps.categories.models import Category, Subcategory
 
 class SubcategorySerializer(serializers.ModelSerializer):
     """Serializer per le sottocategorie"""
-    
+
     class Meta:
         model = Subcategory
-        fields = ['id', 'name', 'description', 'is_active', 'created_at']
+        fields = ['id', 'name', 'description', 'aliases', 'icon', 'is_active', 'created_at']
         read_only_fields = ['id', 'created_at']
 
 
@@ -60,10 +60,10 @@ class CategoryCreateUpdateSerializer(serializers.ModelSerializer):
 
 class SubcategoryCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer per creare/aggiornare sottocategorie"""
-    
+
     class Meta:
         model = Subcategory
-        fields = ['category', 'name', 'description', 'is_active']
+        fields = ['category', 'name', 'description', 'aliases', 'is_active']
     
     def validate(self, attrs):
         """Verifica unicità del nome nella categoria"""
