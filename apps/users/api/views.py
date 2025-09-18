@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from .serializers import (
     UserSerializer,
     UserCreateSerializer,
@@ -137,7 +138,9 @@ class FamilyViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.family:
             return user.family.__class__.objects.filter(id=user.family.id)
-        return user.family.__class__.objects.none()
+        # Importa Family model per ottenere il queryset vuoto
+        from apps.users.models import Family
+        return Family.objects.none()
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -189,9 +192,68 @@ class FamilyInvitationViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.family:
             return user.family.invitations.all()
-        return user.family.__class__.objects.none()
+        # Importa FamilyInvitation model per ottenere il queryset vuoto
+        from apps.users.models import FamilyInvitation
+        return FamilyInvitation.objects.none()
 
     def get_serializer_class(self):
         if self.action == 'create':
             return FamilyInvitationCreateSerializer
         return FamilyInvitationSerializer
+
+    @action(detail=False, methods=['get'])
+    def received(self, request):
+        """Restituisce gli inviti ricevuti dall'utente corrente"""
+        from apps.users.models import FamilyInvitation
+
+        # Trova inviti per l'email dell'utente che sono ancora in attesa
+        invitations = FamilyInvitation.objects.filter(
+            email=request.user.email,
+            status='pending'
+        ).select_related('family', 'invited_by')
+
+        serializer = FamilyInvitationSerializer(invitations, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def accept(self, request, pk=None):
+        """Accetta un invito ricevuto"""
+        from apps.users.models import FamilyInvitation
+
+        try:
+            invitation = FamilyInvitation.objects.get(
+                pk=pk,
+                email=request.user.email,
+                status='pending'
+            )
+        except FamilyInvitation.DoesNotExist:
+            return Response(
+                {'detail': 'Invito non trovato o già utilizzato.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Verifica che l'utente non sia già in una famiglia
+        if request.user.family:
+            return Response(
+                {'detail': 'Sei già membro di una famiglia. Lascia la famiglia corrente prima di accettare l\'invito.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Associa l'utente alla famiglia
+        request.user.family = invitation.family
+        request.user.save()
+
+        # Marca l'invito come accettato
+        invitation.status = 'accepted'
+        invitation.accepted_at = timezone.now()
+        invitation.save()
+
+        # Aggiorna il ruolo del profilo se specificato nell'invito
+        if hasattr(request.user, 'profile') and invitation.family_role:
+            request.user.profile.family_role = invitation.family_role
+            request.user.profile.save()
+
+        return Response({
+            'detail': f'Invito accettato! Ti sei unito alla famiglia "{invitation.family.name}".',
+            'family': FamilySerializer(invitation.family).data
+        })

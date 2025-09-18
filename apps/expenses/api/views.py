@@ -29,17 +29,21 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     ordering = ['-date', '-created_at']
     
     def get_queryset(self):
-        """Restituisce le spese dell'utente e quelle condivise con lui, solo della stessa famiglia"""
+        """Restituisce le spese dell'utente e quelle appartenenti a piani di spesa condivisi"""
         user = self.request.user
 
         # Se l'utente non appartiene a nessuna famiglia, vede solo le sue spese
         if not user.family:
             return Expense.objects.filter(user=user)
 
-        # Filtra per utenti della stessa famiglia
-        family_users = user.family.members.all()
+        # Restituisce:
+        # 1. Le spese create dall'utente stesso
+        # 2. Le spese che appartengono a piani di spesa condivisi con la famiglia
+        # 3. Le spese condivise direttamente con l'utente
         return Expense.objects.filter(
-            Q(user__in=family_users) | Q(shared_with__in=family_users)
+            Q(user=user) |  # Spese proprie
+            Q(spending_plan__is_shared=True, user__family=user.family) |  # Spese di piani condivisi
+            Q(shared_with=user)  # Spese condivise direttamente
         ).distinct()
     
     def get_serializer_class(self):
@@ -53,16 +57,9 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def my_expenses(self, request):
-        """Restituisce solo le spese create dall'utente della stessa famiglia"""
+        """Restituisce solo le spese create dall'utente stesso"""
         user = request.user
-
-        # Se l'utente non appartiene a nessuna famiglia, vede solo le sue spese
-        if not user.family:
-            expenses = Expense.objects.filter(user=user)
-        else:
-            # Filtra per utenti della stessa famiglia
-            family_users = user.family.members.all()
-            expenses = Expense.objects.filter(user__in=family_users)
+        expenses = Expense.objects.filter(user=user)
         serializer = ExpenseSerializer(expenses, many=True)
         return Response(serializer.data)
     

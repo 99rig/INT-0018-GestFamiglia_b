@@ -2,6 +2,7 @@ from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+from django.utils import timezone
 from apps.users.models import UserProfile, Family, FamilyInvitation
 
 User = get_user_model()
@@ -63,7 +64,15 @@ class UserCreateSerializer(serializers.ModelSerializer):
         validators=[validate_password]
     )
     password2 = serializers.CharField(write_only=True, required=True)
-    
+
+    # Campo per il codice invito (opzionale)
+    invitation_code = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+        help_text="Codice invito per unirsi a una famiglia esistente"
+    )
+
     # Campi del profilo
     role = serializers.ChoiceField(choices=UserProfile.ROLE_CHOICES, default='familiare')
     family_role = serializers.ChoiceField(choices=UserProfile.FAMILY_ROLE_CHOICES, default='altro')
@@ -74,9 +83,9 @@ class UserCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'username', 'email', 'password', 'password2',
-            'first_name', 'last_name', 'role', 'family_role', 
-            'phone_number', 'birth_date', 'bio'
+            'email', 'password', 'password2',
+            'first_name', 'last_name', 'invitation_code',
+            'role', 'family_role', 'phone_number', 'birth_date', 'bio'
         ]
     
     def validate(self, attrs):
@@ -84,9 +93,23 @@ class UserCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 "password": "I campi password non corrispondono."
             })
+
+        # Valida il codice invito se fornito
+        if attrs.get('invitation_code'):
+            try:
+                # Verifica che il codice invito esista e sia valido
+                FamilyInvitation.objects.get(token=attrs['invitation_code'], status='pending')
+            except FamilyInvitation.DoesNotExist:
+                raise serializers.ValidationError({
+                    "invitation_code": "Codice invito non valido o già utilizzato."
+                })
+
         return attrs
     
     def create(self, validated_data):
+        # Estrae il codice invito se presente
+        invitation_code = validated_data.pop('invitation_code', None)
+
         # Estrae i campi del profilo
         profile_data = {
             'role': validated_data.pop('role', 'familiare'),
@@ -95,13 +118,40 @@ class UserCreateSerializer(serializers.ModelSerializer):
             'birth_date': validated_data.pop('birth_date', None),
             'bio': validated_data.pop('bio', ''),
         }
-        
+
         validated_data.pop('password2')
+
+        # Genera username dall'email se non fornito
+        if 'username' not in validated_data:
+            validated_data['username'] = validated_data['email']
+
         user = User.objects.create_user(**validated_data)
-        
-        # Crea il profilo
-        UserProfile.objects.create(user=user, **profile_data)
-        
+
+        # Gestisce l'invito se presente
+        if invitation_code:
+            try:
+                invitation = FamilyInvitation.objects.get(token=invitation_code, status='pending')
+                # Associa l'utente alla famiglia
+                user.family = invitation.family
+                user.save()
+
+                # Marca l'invito come accettato
+                invitation.status = 'accepted'
+                invitation.accepted_at = timezone.now()
+                invitation.save()
+
+            except FamilyInvitation.DoesNotExist:
+                # Questo non dovrebbe accadere perché è già stato validato
+                pass
+
+        # Aggiorna o crea il profilo (il profilo potrebbe essere già stato creato da un signal)
+        profile, created = UserProfile.objects.get_or_create(user=user, defaults=profile_data)
+        if not created:
+            # Aggiorna il profilo esistente
+            for key, value in profile_data.items():
+                setattr(profile, key, value)
+            profile.save()
+
         return user
 
 
@@ -281,10 +331,16 @@ class FamilyInvitationSerializer(serializers.ModelSerializer):
     can_be_accepted = serializers.BooleanField(read_only=True)
     is_expired = serializers.BooleanField(read_only=True)
 
+    # Campi aggiuntivi per l'utente che ha fatto l'invito
+    invited_by_first_name = serializers.CharField(source='invited_by.first_name', read_only=True)
+    invited_by_last_name = serializers.CharField(source='invited_by.last_name', read_only=True)
+    invited_by_email = serializers.CharField(source='invited_by.email', read_only=True)
+
     class Meta:
         model = FamilyInvitation
         fields = [
             'id', 'family', 'family_name', 'invited_by', 'invited_by_name',
+            'invited_by_first_name', 'invited_by_last_name', 'invited_by_email',
             'email', 'family_role', 'token', 'status', 'created_at',
             'expires_at', 'can_be_accepted', 'is_expired'
         ]
