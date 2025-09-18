@@ -761,7 +761,7 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
             'planned_expenses__category',
             'planned_expenses__subcategory',
             # Precarica le spese reali collegate alle pianificate
-            'planned_expenses__expense_set'
+            'planned_expenses__actual_payments'
         ).first()
 
         # Serializza il piano con tutte le spese pianificate usando il serializer ottimizzato

@@ -87,18 +87,62 @@ class PlannedExpenseSerializer(serializers.ModelSerializer):
 
 
 class PlannedExpenseLightSerializer(serializers.ModelSerializer):
-    """Serializer leggero per le spese pianificate (senza calcoli costosi)"""
+    """Serializer leggero per le spese pianificate con campi essenziali per il frontend"""
     category_detail = CategorySerializer(source='category', read_only=True)
     subcategory_detail = CategorySerializer(source='subcategory', read_only=True)
+
+    # Campi essenziali per il frontend
+    total_paid = serializers.SerializerMethodField()
+    remaining_amount = serializers.SerializerMethodField()
+    completion_percentage = serializers.SerializerMethodField()
+    payment_status = serializers.SerializerMethodField()
+    is_fully_paid = serializers.SerializerMethodField()
+    is_partially_paid = serializers.SerializerMethodField()
+    actual_payments_count = serializers.SerializerMethodField()
 
     class Meta:
         model = PlannedExpense
         fields = [
             'id', 'spending_plan', 'description', 'amount', 'category', 'category_detail',
             'subcategory', 'subcategory_detail', 'priority', 'due_date',
-            'notes', 'is_completed', 'created_at', 'updated_at'
+            'notes', 'is_completed', 'created_at', 'updated_at',
+            'total_paid', 'remaining_amount', 'completion_percentage',
+            'payment_status', 'is_fully_paid', 'is_partially_paid',
+            'actual_payments_count'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id', 'created_at', 'updated_at', 'total_paid', 'remaining_amount',
+            'completion_percentage', 'payment_status', 'is_fully_paid',
+            'is_partially_paid', 'actual_payments_count'
+        ]
+
+    def get_total_paid(self, obj):
+        """Importo totale già pagato"""
+        return str(obj.get_total_paid())
+
+    def get_remaining_amount(self, obj):
+        """Importo rimanente da pagare"""
+        return str(obj.get_remaining_amount())
+
+    def get_completion_percentage(self, obj):
+        """Percentuale di completamento"""
+        return obj.get_completion_percentage()
+
+    def get_payment_status(self, obj):
+        """Stato del pagamento"""
+        return obj.get_payment_status()
+
+    def get_is_fully_paid(self, obj):
+        """Se la spesa è completamente pagata"""
+        return obj.is_fully_paid()
+
+    def get_is_partially_paid(self, obj):
+        """Se la spesa è parzialmente pagata"""
+        return obj.is_partially_paid()
+
+    def get_actual_payments_count(self, obj):
+        """Numero di pagamenti effettuati"""
+        return obj.actual_payments.count()
 
 
 class PlannedExpenseCreateUpdateSerializer(serializers.ModelSerializer):
