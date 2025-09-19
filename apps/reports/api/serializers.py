@@ -105,6 +105,7 @@ class PlannedExpenseLightSerializer(serializers.ModelSerializer):
 
     # Informazioni sulle rate ricorrenti collegate
     recurring_installments_status = serializers.SerializerMethodField()
+    recurring_installments_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = PlannedExpense
@@ -118,12 +119,13 @@ class PlannedExpenseLightSerializer(serializers.ModelSerializer):
             # Campi ricorrenza
             'is_recurring', 'total_installments', 'installment_number',
             'parent_recurring_id', 'recurring_frequency',
-            'recurring_installments_status'
+            'recurring_installments_status', 'recurring_installments_summary'
         ]
         read_only_fields = [
             'id', 'created_at', 'updated_at', 'total_paid', 'remaining_amount',
             'completion_percentage', 'payment_status', 'is_fully_paid',
-            'is_partially_paid', 'actual_payments_count', 'recurring_installments_status'
+            'is_partially_paid', 'actual_payments_count', 'recurring_installments_status',
+            'recurring_installments_summary'
         ]
 
     def get_total_paid(self, obj):
@@ -178,6 +180,40 @@ class PlannedExpenseLightSerializer(serializers.ModelSerializer):
             })
 
         return installments_data
+
+    def get_recurring_installments_summary(self, obj):
+        """Restituisce la sintesi degli importi delle rate ricorrenti"""
+        if not obj.is_recurring or not obj.parent_recurring_id:
+            return None
+
+        # Trova tutte le rate collegate usando lo stesso parent_recurring_id
+        from apps.reports.models import PlannedExpense
+        from decimal import Decimal
+
+        installments = PlannedExpense.objects.filter(
+            parent_recurring_id=obj.parent_recurring_id
+        )
+
+        # Calcola i totali
+        total_amount = Decimal('0.00')
+        completed_amount = Decimal('0.00')
+        pending_amount = Decimal('0.00')
+
+        for installment in installments:
+            amount = installment.amount or Decimal('0.00')
+            total_amount += amount
+
+            if installment.is_completed or installment.is_fully_paid():
+                completed_amount += amount
+            else:
+                pending_amount += amount
+
+        return {
+            'total_amount': str(total_amount),
+            'completed_amount': str(completed_amount),
+            'pending_amount': str(pending_amount),
+            'total_count': installments.count()
+        }
 
 
 class PlannedExpenseCreateUpdateSerializer(serializers.ModelSerializer):

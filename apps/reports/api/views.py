@@ -621,6 +621,104 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
             'installments': installments_data
         })
 
+    @action(detail=True, methods=['patch'], url_path='installments/(?P<installment_number>[^/.]+)')
+    def update_installment(self, request, pk=None, installment_number=None):
+        """Aggiorna l'importo di una specifica rata ricorrente"""
+        planned_expense = self.get_object()
+
+        # Validazione: deve essere ricorrente
+        if not planned_expense.is_recurring or not planned_expense.parent_recurring_id:
+            return Response(
+                {'detail': 'Questa spesa non è ricorrente o non ha rate collegate.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validazione dell'installment_number
+        try:
+            installment_num = int(installment_number)
+        except (ValueError, TypeError):
+            return Response(
+                {'detail': 'Numero rata non valido.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Trova la rata specifica
+        from apps.reports.models import PlannedExpense
+        target_installment = PlannedExpense.objects.filter(
+            parent_recurring_id=planned_expense.parent_recurring_id,
+            installment_number=installment_num
+        ).first()
+
+        if not target_installment:
+            return Response(
+                {'detail': f'Rata {installment_num} non trovata.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Validazione dell'importo
+        amount = request.data.get('amount')
+        if not amount:
+            return Response(
+                {'detail': 'Campo amount obbligatorio.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            amount = float(amount)
+            if amount <= 0:
+                raise ValueError()
+        except (ValueError, TypeError):
+            return Response(
+                {'detail': 'Importo deve essere un numero positivo.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Aggiorna l'importo
+        old_amount = target_installment.amount
+        target_installment.amount = amount
+        target_installment.save(update_fields=['amount'])
+
+        # Calcola il nuovo summary per tutte le rate
+        from decimal import Decimal
+        installments = PlannedExpense.objects.filter(
+            parent_recurring_id=planned_expense.parent_recurring_id
+        )
+
+        total_amount = Decimal('0.00')
+        completed_amount = Decimal('0.00')
+        pending_amount = Decimal('0.00')
+
+        for inst in installments:
+            inst_amount = inst.amount or Decimal('0.00')
+            total_amount += inst_amount
+
+            if inst.is_completed or inst.is_fully_paid():
+                completed_amount += inst_amount
+            else:
+                pending_amount += inst_amount
+
+        updated_summary = {
+            'total_amount': str(total_amount),
+            'completed_amount': str(completed_amount),
+            'pending_amount': str(pending_amount),
+            'total_count': installments.count()
+        }
+
+        return Response({
+            'detail': f'Rata {installment_num} aggiornata da €{old_amount} a €{amount}.',
+            'installment_number': installment_num,
+            'old_amount': str(old_amount),
+            'new_amount': str(amount),
+            'updated_installment': {
+                'id': target_installment.id,
+                'installment_number': target_installment.installment_number,
+                'amount': str(target_installment.amount),
+                'due_date': target_installment.due_date,
+                'is_completed': target_installment.is_completed
+            },
+            'updated_summary': updated_summary
+        })
+
     def _get_or_create_plan_for_date(self, target_date, template_plan, user):
         """Helper: trova o crea un piano per la data target"""
         from apps.reports.models import SpendingPlan
