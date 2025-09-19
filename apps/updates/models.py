@@ -59,3 +59,31 @@ class AppVersion(models.Model):
         if apk_path and os.path.exists(apk_path):
             return os.path.getsize(apk_path)
         return 0
+
+    def save(self, *args, **kwargs):
+        """Override save per pulire automaticamente vecchie versioni"""
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+
+        # Se è una nuova versione, pulisci le vecchie
+        if is_new:
+            self.cleanup_old_versions()
+
+    @classmethod
+    def cleanup_old_versions(cls, keep_count=5):
+        """Mantiene solo le ultime N versioni, eliminando le più vecchie"""
+        all_versions = cls.objects.order_by('-version_code')
+
+        if all_versions.count() > keep_count:
+            versions_to_delete = all_versions[keep_count:]
+
+            for version in versions_to_delete:
+                # Elimina file APK se esiste
+                if version.apk_file_path and os.path.exists(version.apk_file_path):
+                    try:
+                        os.remove(version.apk_file_path)
+                    except Exception as e:
+                        print(f"Errore eliminando APK {version.apk_file_path}: {e}")
+
+                # Elimina record
+                version.delete()
