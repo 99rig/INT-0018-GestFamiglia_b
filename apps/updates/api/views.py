@@ -78,7 +78,7 @@ def download_apk(request, version_code):
 def download_latest_apk(request):
     """Download dell'APK dell'ultima versione disponibile"""
 
-    latest_version = AppVersion.objects.using('updates_db').order_by('-version_code').first()
+    latest_version = AppVersion.objects.order_by('-version_code').first()
 
     if not latest_version:
         raise Http404("Nessuna versione disponibile")
