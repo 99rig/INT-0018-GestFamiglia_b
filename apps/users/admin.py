@@ -94,7 +94,7 @@ class UserProfileAdmin(admin.ModelAdmin):
     )
     
     def user_display(self, obj):
-        return f"{obj.user.get_full_name() or obj.user.email}"
+        return "{}".format(obj.user.get_full_name() or obj.user.email)
     user_display.short_description = "Utente"
 
 
@@ -162,10 +162,10 @@ class FamilyInvitationAdmin(admin.ModelAdmin):
 
     def mark_as_expired(self, request, queryset):
         updated = queryset.update(status='expired')
-        self.message_user(request, f'{updated} inviti marcati come scaduti.')
+        self.message_user(request, '{} inviti marcati come scaduti.'.format(updated))
     mark_as_expired.short_description = "Marca come scaduti"
 
     def mark_as_pending(self, request, queryset):
         updated = queryset.update(status='pending')
-        self.message_user(request, f'{updated} inviti marcati come pending.')
+        self.message_user(request, '{} inviti marcati come pending.'.format(updated))
     mark_as_pending.short_description = "Marca come pending"

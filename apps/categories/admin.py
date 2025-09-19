@@ -59,7 +59,7 @@ class CategoryAdmin(admin.ModelAdmin):
     def subcategory_count(self, obj):
         count = obj.subcategories.count()
         active_count = obj.subcategories.filter(is_active=True).count()
-        return f"{active_count} attive / {count} totali"
+        return "{} attive / {} totali".format(active_count, count)
     subcategory_count.short_description = "Sottocategorie"
 
 

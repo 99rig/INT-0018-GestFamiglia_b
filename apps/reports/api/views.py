@@ -471,6 +471,194 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
 
         return Response(summary)
 
+    @action(detail=True, methods=['post'])
+    def generate_recurring(self, request, pk=None):
+        """Genera le rate ricorrenti future per questa spesa pianificata"""
+        planned_expense = self.get_object()
+
+        # Validazione: deve essere ricorrente
+        if not planned_expense.is_recurring:
+            return Response(
+                {'detail': 'Questa spesa non è configurata come ricorrente.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validazione: deve avere rate totali
+        if not planned_expense.total_installments or planned_expense.total_installments <= 1:
+            return Response(
+                {'detail': 'Numero di rate totali non valido.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Se non ha parent_recurring_id, è la prima rata - genera ID
+        if not planned_expense.parent_recurring_id:
+            import uuid
+            planned_expense.parent_recurring_id = str(uuid.uuid4())
+            planned_expense.save(update_fields=['parent_recurring_id'])
+
+        # Calcola le rate già esistenti
+        from apps.reports.models import PlannedExpense
+        existing_count = PlannedExpense.objects.filter(
+            parent_recurring_id=planned_expense.parent_recurring_id
+        ).count()
+
+        missing_count = planned_expense.total_installments - existing_count
+
+        if missing_count <= 0:
+            return Response({
+                'detail': 'Tutte le rate sono già state generate.',
+                'existing_installments': existing_count,
+                'total_installments': planned_expense.total_installments
+            })
+
+        # Genera le rate mancanti
+        from dateutil.relativedelta import relativedelta
+        from apps.reports.models import SpendingPlan
+
+        current_plan = planned_expense.spending_plan
+        current_date = current_plan.start_date
+        created_plans = []
+        created_expenses = []
+
+        for i in range(existing_count + 1, planned_expense.total_installments + 1):
+            # Calcola la data per questa rata
+            if planned_expense.recurring_frequency == 'monthly':
+                installment_date = current_date + relativedelta(months=i-1)
+            elif planned_expense.recurring_frequency == 'bimonthly':
+                installment_date = current_date + relativedelta(months=(i-1)*2)
+            elif planned_expense.recurring_frequency == 'quarterly':
+                installment_date = current_date + relativedelta(months=(i-1)*3)
+            else:
+                installment_date = current_date + relativedelta(months=i-1)
+
+            # Trova o crea il piano per questo mese
+            plan = self._get_or_create_plan_for_date(
+                installment_date, current_plan, request.user
+            )
+
+            if plan in created_plans:
+                pass  # Piano già creato in questa sessione
+            elif plan.auto_generated:
+                created_plans.append(plan)
+
+            # Crea la rata
+            installment_description = (
+                f"{planned_expense.description} "
+                f"(rata {i}/{planned_expense.total_installments})"
+            )
+
+            new_expense = PlannedExpense.objects.create(
+                spending_plan=plan,
+                description=installment_description,
+                amount=planned_expense.amount,
+                category=planned_expense.category,
+                subcategory=planned_expense.subcategory,
+                priority=planned_expense.priority,
+                due_date=installment_date,
+                notes=f"Rata {i} di {planned_expense.total_installments} - Auto-generata",
+                is_recurring=True,
+                total_installments=planned_expense.total_installments,
+                installment_number=i,
+                parent_recurring_id=planned_expense.parent_recurring_id,
+                recurring_frequency=planned_expense.recurring_frequency
+            )
+            created_expenses.append(new_expense)
+
+        # Aggiungi una nota alla spesa originale per indicare che è stata processata
+        if created_expenses:
+            if planned_expense.notes:
+                planned_expense.notes += f"\n\n✅ Rate generate il {timezone.now().strftime('%d/%m/%Y %H:%M')}"
+            else:
+                planned_expense.notes = f"✅ Rate generate il {timezone.now().strftime('%d/%m/%Y %H:%M')}"
+            planned_expense.save(update_fields=['notes'])
+
+        return Response({
+            'detail': f'Generate {len(created_expenses)} rate ricorrenti.',
+            'created_installments': len(created_expenses),
+            'created_plans': len(created_plans),
+            'total_installments': planned_expense.total_installments,
+            'parent_recurring_id': planned_expense.parent_recurring_id
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def recurring_status(self, request, pk=None):
+        """Restituisce lo stato di tutte le rate ricorrenti per questa spesa"""
+        planned_expense = self.get_object()
+
+        # Validazione: deve essere ricorrente
+        if not planned_expense.is_recurring or not planned_expense.parent_recurring_id:
+            return Response(
+                {'detail': 'Questa spesa non è ricorrente o non ha rate collegate.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Trova tutte le rate collegate
+        from apps.reports.models import PlannedExpense
+        installments = PlannedExpense.objects.filter(
+            parent_recurring_id=planned_expense.parent_recurring_id
+        ).order_by('installment_number')
+
+        # Costruisci la risposta con lo stato di ogni rata
+        installments_data = []
+        for installment in installments:
+            installments_data.append({
+                'id': installment.id,
+                'installment_number': installment.installment_number,
+                'total_installments': installment.total_installments,
+                'amount': str(installment.amount),
+                'is_completed': installment.is_completed,
+                'total_paid': str(installment.get_total_paid()),
+                'is_fully_paid': installment.is_fully_paid(),
+                'is_partially_paid': installment.is_partially_paid(),
+                'due_date': installment.due_date,
+                'spending_plan_name': installment.spending_plan.name if installment.spending_plan else None
+            })
+
+        return Response({
+            'parent_recurring_id': planned_expense.parent_recurring_id,
+            'total_installments': planned_expense.total_installments,
+            'installments': installments_data
+        })
+
+    def _get_or_create_plan_for_date(self, target_date, template_plan, user):
+        """Helper: trova o crea un piano per la data target"""
+        from apps.reports.models import SpendingPlan
+        from dateutil.relativedelta import relativedelta
+
+        # Cerca piano esistente per questo mese
+        existing_plan = SpendingPlan.objects.filter(
+            plan_type='monthly',
+            start_date__year=target_date.year,
+            start_date__month=target_date.month
+        ).first()
+
+        if existing_plan:
+            return existing_plan
+
+        # Crea nuovo piano
+        start_date = target_date.replace(day=1)
+        end_date = start_date + relativedelta(months=1) - relativedelta(days=1)
+
+        plan_name = f"{target_date.strftime('%B %Y').title()}"
+
+        new_plan = SpendingPlan.objects.create(
+            name=plan_name,
+            description=f"Piano auto-generato per {plan_name}",
+            plan_type='monthly',
+            start_date=start_date,
+            end_date=end_date,
+            total_budget=template_plan.total_budget,
+            is_shared=template_plan.is_shared,
+            created_by=user,
+            auto_generated=True,
+            is_hidden=True  # Nascosto per default
+        )
+
+        # Copia gli utenti
+        new_plan.users.set(template_plan.users.all())
+
+        return new_plan
+
 
 class SpendingPlanViewSet(viewsets.ModelViewSet):
     """ViewSet per la gestione dei piani di spesa"""

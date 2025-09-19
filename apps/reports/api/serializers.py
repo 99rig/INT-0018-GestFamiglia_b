@@ -49,7 +49,10 @@ class PlannedExpenseSerializer(serializers.ModelSerializer):
             'notes', 'is_completed', 'created_at', 'updated_at',
             'total_paid', 'remaining_amount', 'completion_percentage',
             'payment_status', 'is_fully_paid', 'is_partially_paid',
-            'actual_payments_count'
+            'actual_payments_count',
+            # Campi ricorrenza
+            'is_recurring', 'total_installments', 'installment_number',
+            'parent_recurring_id', 'recurring_frequency'
         ]
         read_only_fields = [
             'id', 'created_at', 'updated_at', 'total_paid', 'remaining_amount',
@@ -100,6 +103,9 @@ class PlannedExpenseLightSerializer(serializers.ModelSerializer):
     is_partially_paid = serializers.SerializerMethodField()
     actual_payments_count = serializers.SerializerMethodField()
 
+    # Informazioni sulle rate ricorrenti collegate
+    recurring_installments_status = serializers.SerializerMethodField()
+
     class Meta:
         model = PlannedExpense
         fields = [
@@ -108,12 +114,16 @@ class PlannedExpenseLightSerializer(serializers.ModelSerializer):
             'notes', 'is_completed', 'created_at', 'updated_at',
             'total_paid', 'remaining_amount', 'completion_percentage',
             'payment_status', 'is_fully_paid', 'is_partially_paid',
-            'actual_payments_count'
+            'actual_payments_count',
+            # Campi ricorrenza
+            'is_recurring', 'total_installments', 'installment_number',
+            'parent_recurring_id', 'recurring_frequency',
+            'recurring_installments_status'
         ]
         read_only_fields = [
             'id', 'created_at', 'updated_at', 'total_paid', 'remaining_amount',
             'completion_percentage', 'payment_status', 'is_fully_paid',
-            'is_partially_paid', 'actual_payments_count'
+            'is_partially_paid', 'actual_payments_count', 'recurring_installments_status'
         ]
 
     def get_total_paid(self, obj):
@@ -144,6 +154,31 @@ class PlannedExpenseLightSerializer(serializers.ModelSerializer):
         """Numero di pagamenti effettuati"""
         return obj.actual_payments.count()
 
+    def get_recurring_installments_status(self, obj):
+        """Restituisce lo stato di tutte le rate ricorrenti collegate"""
+        if not obj.is_recurring or not obj.parent_recurring_id:
+            return None
+
+        # Trova tutte le rate collegate usando lo stesso parent_recurring_id
+        from apps.reports.models import PlannedExpense
+        installments = PlannedExpense.objects.filter(
+            parent_recurring_id=obj.parent_recurring_id
+        ).order_by('installment_number')
+
+        # Costruisci l'array con lo stato di ogni rata
+        installments_data = []
+        for installment in installments:
+            installments_data.append({
+                'installment_number': installment.installment_number,
+                'is_completed': installment.is_completed,
+                'is_fully_paid': installment.is_fully_paid(),
+                'is_partially_paid': installment.is_partially_paid(),
+                'due_date': installment.due_date.isoformat() if installment.due_date else None,
+                'amount': str(installment.amount)
+            })
+
+        return installments_data
+
 
 class PlannedExpenseCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer per creare/aggiornare spese pianificate"""
@@ -152,7 +187,10 @@ class PlannedExpenseCreateUpdateSerializer(serializers.ModelSerializer):
         model = PlannedExpense
         fields = [
             'spending_plan', 'description', 'amount', 'category', 'subcategory',
-            'priority', 'due_date', 'notes'
+            'priority', 'due_date', 'notes',
+            # Campi ricorrenza
+            'is_recurring', 'total_installments', 'installment_number',
+            'parent_recurring_id', 'recurring_frequency'
         ]
 
     def validate_amount(self, value):
@@ -368,7 +406,7 @@ class SpendingPlanSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'description', 'plan_type', 'start_date', 'end_date', 'total_budget',
             'users', 'users_detail', 'is_shared', 'created_by', 'created_by_detail',
-            'is_active', 'planned_expenses',
+            'is_active', 'is_hidden', 'auto_generated', 'planned_expenses',
             'total_planned_amount', 'total_unplanned_expenses_amount', 'total_estimated_amount',
             'completed_expenses_amount', 'completed_count', 'total_expenses_count',
             'pending_expenses_amount', 'completion_percentage', 'is_current',
@@ -488,7 +526,7 @@ class SpendingPlanCreateUpdateSerializer(serializers.ModelSerializer):
         model = SpendingPlan
         fields = [
             'name', 'description', 'plan_type', 'start_date', 'end_date', 'total_budget',
-            'users', 'is_shared', 'is_active'
+            'users', 'is_shared', 'is_active', 'is_hidden', 'auto_generated'
         ]
 
     def validate(self, attrs):

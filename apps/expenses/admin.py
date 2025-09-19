@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse
 from django.utils import timezone
-from .models import Expense, RecurringExpense, ExpenseAttachment, ExpenseQuota, Budget
+from .models import Expense, RecurringExpense, ExpenseAttachment, ExpenseQuota
 
 
 class ExpenseQuotaInline(admin.TabularInline):
@@ -132,14 +132,14 @@ class ExpenseAdmin(admin.ModelAdmin):
         
         return format_html(
             '<span style="color: {};">{:.1f}% ({}/{})</span>',
-            color, percentage, paid_count, total_count
+            color, float(percentage), paid_count, total_count
         )
     payment_progress.short_description = "Progresso Quote"
     
     def shared_count(self, obj):
         count = obj.shared_with.count()
         if count > 0:
-            return f"👥 {count}"
+            return "👥 {}".format(count)
         return "-"
     shared_count.short_description = "Condivisa"
     
@@ -148,11 +148,11 @@ class ExpenseAdmin(admin.ModelAdmin):
     has_quote_display.short_description = "Ha Quote"
     
     def total_paid_amount(self, obj):
-        return f"€{obj.get_total_paid_amount()}"
+        return "€{}".format(obj.get_total_paid_amount())
     total_paid_amount.short_description = "Importo Pagato"
     
     def remaining_amount(self, obj):
-        return f"€{obj.get_remaining_amount()}"
+        return "€{}".format(obj.get_remaining_amount())
     remaining_amount.short_description = "Importo Rimanente"
 
 
@@ -232,11 +232,11 @@ class ExpenseQuotaAdmin(admin.ModelAdmin):
         if days is None:
             return "N/A (Pagata)"
         elif days < 0:
-            return f"Scaduta da {abs(days)} giorni"
+            return "Scaduta da {} giorni".format(abs(days))
         elif days == 0:
             return "Scade oggi"
         else:
-            return f"Scade tra {days} giorni"
+            return "Scade tra {} giorni".format(days)
     days_until_due_display.short_description = "Giorni alla Scadenza"
 
 
@@ -265,98 +265,3 @@ class ExpenseAttachmentAdmin(admin.ModelAdmin):
     readonly_fields = ['uploaded_at']
 
 
-@admin.register(Budget)
-class BudgetAdmin(admin.ModelAdmin):
-    """Admin per i budget"""
-    list_display = [
-        'name', 'budget_type_display', 'period_display', 'total_budget',
-        'progress_display', 'planned_expenses_count', 'created_by', 'is_active'
-    ]
-    list_filter = ['budget_type', 'event_type', 'is_active', 'year', 'created_at']
-    search_fields = ['name', 'description', 'created_by__email']
-    readonly_fields = [
-        'created_at', 'updated_at', 'progress_display', 'budget_summary'
-    ]
-    
-    fieldsets = (
-        ('Informazioni Generali', {
-            'fields': ('name', 'description', 'budget_type', 'total_budget', 'is_active')
-        }),
-        ('Configurazione Budget', {
-            'fields': ('event_type', 'year', 'month', 'start_date', 'end_date'),
-            'description': 'Configurare in base al tipo di budget selezionato'
-        }),
-        ('Statistiche', {
-            'fields': ('progress_display', 'budget_summary'),
-            'classes': ('collapse',)
-        }),
-        ('Metadati', {
-            'fields': ('created_by', 'created_at', 'updated_at'),
-            'classes': ('collapse',)
-        })
-    )
-    
-    def budget_type_display(self, obj):
-        colors = {'mensile': 'blue', 'evento': 'green'}
-        color = colors.get(obj.budget_type, 'black')
-        return format_html(
-            '<span style="color: {};">● {}</span>',
-            color, obj.get_budget_type_display()
-        )
-    budget_type_display.short_description = "Tipo"
-    
-    def period_display(self, obj):
-        if obj.budget_type == 'mensile':
-            return f"{obj.month}/{obj.year}"
-        elif obj.start_date:
-            end_text = f" - {obj.end_date}" if obj.end_date else ""
-            return f"{obj.start_date}{end_text}"
-        return "-"
-    period_display.short_description = "Periodo"
-    
-    def progress_display(self, obj):
-        progress = obj.get_progress_percentage()
-        planning = obj.get_planning_percentage()
-        
-        if progress >= 100:
-            color = 'green'
-            status = '✓ Completato'
-        elif progress > 0:
-            color = 'orange'
-            status = f'⏳ {progress:.1f}% pagato'
-        else:
-            color = 'red'
-            status = '○ Non iniziato'
-        
-        return format_html(
-            '<span style="color: {};">{}</span><br>'
-            '<small>Pianificato: {:.1f}%</small>',
-            color, status, planning
-        )
-    progress_display.short_description = "Progresso"
-    
-    def planned_expenses_count(self, obj):
-        count = obj.planned_expenses.count()
-        if count > 0:
-            return f"📋 {count}"
-        return "-"
-    planned_expenses_count.short_description = "Spese"
-    
-    def budget_summary(self, obj):
-        total_planned = obj.get_total_planned_amount()
-        total_spent = obj.get_total_spent_amount()
-        remaining = obj.get_remaining_budget()
-        
-        return format_html(
-            '<strong>Budget Totale:</strong> €{}<br>'
-            '<strong>Pianificato:</strong> €{}<br>'
-            '<strong>Speso:</strong> €{}<br>'
-            '<strong>Rimanente:</strong> €{}',
-            obj.total_budget, total_planned, total_spent, remaining
-        )
-    budget_summary.short_description = "Riepilogo Budget"
-    
-    def save_model(self, request, obj, form, change):
-        if not change:  # Se è una nuova creazione
-            obj.created_by = request.user
-        super().save_model(request, obj, form, change)

@@ -70,6 +70,16 @@ class SpendingPlan(models.Model):
         default=True,
         verbose_name="Attivo"
     )
+    is_hidden = models.BooleanField(
+        default=False,
+        verbose_name="Nascosto",
+        help_text="Se True, il piano non viene mostrato nelle liste principali"
+    )
+    auto_generated = models.BooleanField(
+        default=False,
+        verbose_name="Generato automaticamente",
+        help_text="Indica se il piano è stato creato automaticamente da ricorrenze"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -226,6 +236,36 @@ class PlannedExpense(models.Model):
         verbose_name="Spesa reale",
         help_text="Spesa effettiva collegata a questa pianificazione"
     )
+    # Campi per ricorrenza
+    is_recurring = models.BooleanField(
+        default=False,
+        verbose_name="Spesa ricorrente"
+    )
+    total_installments = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Numero rate totali",
+        help_text="Es: 10 per dentista in 10 rate"
+    )
+    installment_number = models.PositiveIntegerField(
+        default=1,
+        verbose_name="Numero rata corrente"
+    )
+    parent_recurring_id = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        verbose_name="ID gruppo ricorrenza",
+        help_text="Identifica il gruppo di rate collegate"
+    )
+    recurring_frequency = models.CharField(
+        max_length=20,
+        choices=[('monthly', 'Mensile'), ('bimonthly', 'Bimestrale'), ('quarterly', 'Trimestrale')],
+        default='monthly',
+        null=True,
+        blank=True,
+        verbose_name="Frequenza ricorrenza"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -300,6 +340,42 @@ class PlannedExpense(models.Model):
         elif self.priority == 'high':
             return 'high-priority'
         return 'pending'
+
+    def get_recurring_siblings(self):
+        """Restituisce tutte le spese pianificate dello stesso gruppo ricorrente"""
+        if not self.parent_recurring_id:
+            return PlannedExpense.objects.none()
+        return PlannedExpense.objects.filter(
+            parent_recurring_id=self.parent_recurring_id
+        ).order_by('installment_number')
+
+    def get_next_installment(self):
+        """Restituisce la prossima rata dello stesso gruppo"""
+        if not self.parent_recurring_id:
+            return None
+        return PlannedExpense.objects.filter(
+            parent_recurring_id=self.parent_recurring_id,
+            installment_number=self.installment_number + 1
+        ).first()
+
+    def get_previous_installment(self):
+        """Restituisce la rata precedente dello stesso gruppo"""
+        if not self.parent_recurring_id or self.installment_number <= 1:
+            return None
+        return PlannedExpense.objects.filter(
+            parent_recurring_id=self.parent_recurring_id,
+            installment_number=self.installment_number - 1
+        ).first()
+
+    def is_first_installment(self):
+        """Verifica se è la prima rata del gruppo"""
+        return self.installment_number == 1
+
+    def is_last_installment(self):
+        """Verifica se è l'ultima rata del gruppo"""
+        if not self.total_installments:
+            return False
+        return self.installment_number == self.total_installments
 
 
 # Alias per compatibilità (da deprecare)
