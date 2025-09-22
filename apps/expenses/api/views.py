@@ -15,7 +15,8 @@ from .serializers import (
     ExpenseQuotaSerializer,
     ExpenseQuotaCreateUpdateSerializer,
     BudgetSerializer,
-    BudgetCreateUpdateSerializer
+    BudgetCreateUpdateSerializer,
+    ConvertToRecurringSerializer
 )
 
 
@@ -270,17 +271,17 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     def overdue_summary(self, request):
         """Riepilogo quote scadute"""
         from django.utils import timezone
-        
+
         user = request.user
         overdue_quote = ExpenseQuota.objects.filter(
             Q(expense__user=user) | Q(expense__shared_with=user),
             is_paid=False,
             due_date__lt=timezone.now().date()
         ).distinct()
-        
+
         total_overdue = overdue_quote.aggregate(total=Sum('amount'))['total'] or 0
         count_overdue = overdue_quote.count()
-        
+
         # Raggruppa per spesa
         expenses_with_overdue = {}
         for quota in overdue_quote:
@@ -293,7 +294,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             expenses_with_overdue[expense_id]['overdue_quote'].append(
                 ExpenseQuotaSerializer(quota).data
             )
-        
+
         return Response({
             'summary': {
                 'total_amount': str(total_overdue),
@@ -301,6 +302,125 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             },
             'expenses': list(expenses_with_overdue.values())
         })
+
+    @action(detail=True, methods=['post'])
+    def convert_to_recurring(self, request, pk=None):
+        """Converte una spesa esistente in ricorrente"""
+        expense = self.get_object()
+
+        # Verifica che l'utente possa modificare questa spesa
+        if expense.user != request.user and request.user not in expense.shared_with.all():
+            return Response(
+                {'detail': 'Non hai i permessi per modificare questa spesa.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Verifica che la spesa non sia già ricorrente
+        if expense.is_recurring:
+            return Response(
+                {'detail': 'Questa spesa è già ricorrente.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Verifica che non esista già una spesa ricorrente con gli stessi dati
+        existing_recurring = RecurringExpense.objects.filter(
+            user=expense.user,
+            category=expense.category,
+            subcategory=expense.subcategory,
+            amount=expense.amount,
+            description=expense.description,
+            is_active=True
+        ).first()
+
+        if existing_recurring:
+            return Response(
+                {'detail': 'Esiste già una spesa ricorrente simile.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = ConvertToRecurringSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        validated_data = serializer.validated_data
+
+        # Crea la spesa ricorrente
+        recurring_expense = RecurringExpense.objects.create(
+            user=expense.user,
+            category=expense.category,
+            subcategory=expense.subcategory,
+            amount=expense.amount,
+            description=expense.description,
+            frequency=validated_data['frequency'],
+            start_date=validated_data['start_date'],
+            end_date=validated_data.get('end_date'),
+            payment_method=expense.payment_method,
+            is_active=True
+        )
+
+        # Copia gli utenti condivisi
+        recurring_expense.shared_with.set(expense.shared_with.all())
+
+        # Aggiorna la spesa originale come ricorrente
+        expense.is_recurring = True
+        expense.save()
+
+        # Genera spese future se richiesto
+        generated_expenses = []
+        if validated_data.get('generate_immediately', True):
+            from dateutil.relativedelta import relativedelta
+
+            # Logica di generazione delle spese future
+            current_date = validated_data['start_date']
+            end_date = validated_data.get('end_date')
+            today = datetime.today().date()
+
+            frequency_map = {
+                'giornaliera': lambda d: d + timedelta(days=1),
+                'settimanale': lambda d: d + timedelta(weeks=1),
+                'bisettimanale': lambda d: d + timedelta(weeks=2),
+                'mensile': lambda d: d + relativedelta(months=1),
+                'bimestrale': lambda d: d + relativedelta(months=2),
+                'trimestrale': lambda d: d + relativedelta(months=3),
+                'semestrale': lambda d: d + relativedelta(months=6),
+                'annuale': lambda d: d + relativedelta(years=1),
+            }
+
+            next_date_func = frequency_map.get(validated_data['frequency'])
+            if next_date_func:
+                next_date = next_date_func(current_date)
+
+                # Genera al massimo 12 spese future per evitare troppi dati
+                count = 0
+                while (not end_date or next_date <= end_date) and next_date <= today + relativedelta(months=12) and count < 12:
+                    future_expense = Expense.objects.create(
+                        user=expense.user,
+                        category=expense.category,
+                        subcategory=expense.subcategory,
+                        amount=expense.amount,
+                        description=f"{expense.description} (Ricorrente)",
+                        date=next_date,
+                        payment_method=expense.payment_method,
+                        status='pianificata',
+                        is_recurring=True,
+                        spending_plan=expense.spending_plan
+                    )
+                    future_expense.shared_with.set(expense.shared_with.all())
+                    generated_expenses.append(ExpenseSerializer(future_expense).data)
+
+                    next_date = next_date_func(next_date)
+                    count += 1
+
+            # Aggiorna la data di ultima generazione
+            recurring_expense.last_generated = current_date
+            recurring_expense.save()
+
+        return Response({
+            'detail': f'Spesa convertita in ricorrente con successo.',
+            'recurring_expense': RecurringExpenseSerializer(recurring_expense).data,
+            'generated_count': len(generated_expenses),
+            'generated_expenses': generated_expenses[:5]  # Mostra solo le prime 5
+        }, status=status.HTTP_201_CREATED)
 
 
 class RecurringExpenseViewSet(viewsets.ModelViewSet):

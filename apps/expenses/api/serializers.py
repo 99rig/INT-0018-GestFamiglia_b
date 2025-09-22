@@ -335,19 +335,51 @@ class BudgetSerializer(serializers.ModelSerializer):
         return obj.planned_expenses.count()
 
 
+class ConvertToRecurringSerializer(serializers.Serializer):
+    """Serializer per convertire una spesa in ricorrente"""
+    frequency = serializers.ChoiceField(
+        choices=RecurringExpense.FREQUENCY_CHOICES,
+        help_text="Frequenza della ricorrenza"
+    )
+    start_date = serializers.DateField(
+        help_text="Data di inizio della ricorrenza"
+    )
+    end_date = serializers.DateField(
+        required=False,
+        allow_null=True,
+        help_text="Data di fine della ricorrenza (opzionale)"
+    )
+    generate_immediately = serializers.BooleanField(
+        default=True,
+        help_text="Se generare immediatamente le spese future"
+    )
+
+    def validate(self, attrs):
+        """Valida le date"""
+        start_date = attrs.get('start_date')
+        end_date = attrs.get('end_date')
+
+        if end_date and start_date and end_date <= start_date:
+            raise serializers.ValidationError({
+                "end_date": "La data di fine deve essere successiva alla data di inizio."
+            })
+
+        return attrs
+
+
 class BudgetCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer per creare/aggiornare budget"""
-    
+
     class Meta:
         model = Budget
         fields = [
             'name', 'description', 'budget_type', 'event_type',
             'year', 'month', 'start_date', 'end_date', 'total_budget', 'is_active'
         ]
-    
+
     def validate(self, attrs):
         budget_type = attrs.get('budget_type')
-        
+
         if budget_type == 'mensile':
             # Per budget mensili, year e month sono obbligatori
             if not attrs.get('year') or not attrs.get('month'):
@@ -359,7 +391,7 @@ class BudgetCreateUpdateSerializer(serializers.ModelSerializer):
             attrs['event_type'] = None
             attrs['start_date'] = None
             attrs['end_date'] = None
-            
+
         elif budget_type == 'evento':
             # Per eventi, event_type e start_date sono obbligatori
             if not attrs.get('event_type'):
@@ -379,9 +411,9 @@ class BudgetCreateUpdateSerializer(serializers.ModelSerializer):
             # Pulisce i campi mensili
             attrs['year'] = None
             attrs['month'] = None
-        
+
         return attrs
-    
+
     def create(self, validated_data):
         validated_data['created_by'] = self.context['request'].user
         return Budget.objects.create(**validated_data)

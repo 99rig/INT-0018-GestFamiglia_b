@@ -771,6 +771,8 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
         """Restituisce i piani di spesa visibili all'utente (personali + famiglia)"""
         user = self.request.user
         from django.db.models import Q
+        from django.utils import timezone
+        from dateutil.relativedelta import relativedelta
 
         # Piani personali (creati dall'utente e non condivisi)
         personal_plans = Q(created_by=user, is_shared=False)
@@ -781,8 +783,8 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
             family_users = user.family.members.all()
             family_plans = Q(users__in=family_users, is_shared=True)
 
-        # Restituisci piani personali + piani famiglia con ottimizzazioni
-        return SpendingPlan.objects.filter(
+        # Query base
+        queryset = SpendingPlan.objects.filter(
             personal_plans | family_plans
         ).select_related(
             'created_by'
@@ -791,6 +793,16 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
             'planned_expenses__category',
             'planned_expenses__subcategory'
         ).distinct()
+
+        # Applica filtro temporale se non richiesto "show_all"
+        show_all = self.request.query_params.get('show_all', 'false').lower() == 'true'
+        if not show_all:
+            # Limita ai piani nei prossimi 3 mesi (default)
+            today = timezone.now().date()
+            three_months_from_now = today + relativedelta(months=3)
+            queryset = queryset.filter(start_date__lte=three_months_from_now)
+
+        return queryset
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
