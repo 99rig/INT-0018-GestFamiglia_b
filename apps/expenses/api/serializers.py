@@ -163,7 +163,8 @@ class ExpenseCreateUpdateSerializer(serializers.ModelSerializer):
     shared_with = serializers.PrimaryKeyRelatedField(
         many=True,
         queryset=UserSerializer.Meta.model.objects.all(),
-        required=False
+        required=False,
+        allow_null=True
     )
     spending_plan = serializers.PrimaryKeyRelatedField(
         queryset=SpendingPlan.objects.all(),
@@ -178,6 +179,12 @@ class ExpenseCreateUpdateSerializer(serializers.ModelSerializer):
             'date', 'payment_method', 'status', 'receipt', 'shared_with',
             'is_recurring', 'budget', 'spending_plan'
         ]
+
+    def to_internal_value(self, data):
+        """Converte null in lista vuota per shared_with"""
+        if 'shared_with' in data and data['shared_with'] is None:
+            data['shared_with'] = []
+        return super().to_internal_value(data)
     
     def validate(self, attrs):
         """Valida che la sottocategoria appartenga alla categoria"""
@@ -195,6 +202,8 @@ class ExpenseCreateUpdateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """Crea una nuova spesa"""
         shared_with = validated_data.pop('shared_with', [])
+        if shared_with is None:
+            shared_with = []
         expense = Expense.objects.create(**validated_data)
         expense.shared_with.set(shared_with)
         return expense
@@ -202,15 +211,15 @@ class ExpenseCreateUpdateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         """Aggiorna una spesa esistente"""
         shared_with = validated_data.pop('shared_with', None)
-        
+
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
-        
+
         instance.save()
-        
+
         if shared_with is not None:
             instance.shared_with.set(shared_with)
-        
+
         return instance
 
 
@@ -238,15 +247,22 @@ class RecurringExpenseCreateUpdateSerializer(serializers.ModelSerializer):
     shared_with = serializers.PrimaryKeyRelatedField(
         many=True,
         queryset=UserSerializer.Meta.model.objects.all(),
-        required=False
+        required=False,
+        allow_null=True
     )
-    
+
     class Meta:
         model = RecurringExpense
         fields = [
             'category', 'subcategory', 'amount', 'description', 'frequency',
             'start_date', 'end_date', 'payment_method', 'shared_with', 'is_active'
         ]
+
+    def to_internal_value(self, data):
+        """Converte null in lista vuota per shared_with"""
+        if 'shared_with' in data and data['shared_with'] is None:
+            data['shared_with'] = []
+        return super().to_internal_value(data)
     
     def validate(self, attrs):
         """Valida le date e la sottocategoria"""
@@ -272,6 +288,8 @@ class RecurringExpenseCreateUpdateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """Crea una nuova spesa ricorrente"""
         shared_with = validated_data.pop('shared_with', [])
+        if shared_with is None:
+            shared_with = []
         recurring_expense = RecurringExpense.objects.create(**validated_data)
         recurring_expense.shared_with.set(shared_with)
         return recurring_expense
@@ -279,15 +297,15 @@ class RecurringExpenseCreateUpdateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         """Aggiorna una spesa ricorrente esistente"""
         shared_with = validated_data.pop('shared_with', None)
-        
+
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
-        
+
         instance.save()
-        
+
         if shared_with is not None:
             instance.shared_with.set(shared_with)
-        
+
         return instance
 
 
