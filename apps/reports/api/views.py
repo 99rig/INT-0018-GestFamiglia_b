@@ -836,6 +836,30 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
         serializer = SpendingPlanSerializer(plans, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'])
+    def select_options(self, request):
+        """Restituisce piani di spesa ottimizzati per select (solo ID e nome)"""
+        user = request.user
+        from django.db.models import Q
+
+        # Piani personali (creati dall'utente e non condivisi)
+        personal_plans = Q(created_by=user, is_shared=False)
+
+        # Piani condivisi con la famiglia (se l'utente ha una famiglia)
+        family_plans = Q()
+        if user.family:
+            family_users = user.family.members.all()
+            family_plans = Q(users__in=family_users, is_shared=True)
+
+        # Query ottimizzata - solo campi necessari per select
+        plans = SpendingPlan.objects.filter(
+            personal_plans | family_plans
+        ).filter(
+            is_active=True
+        ).values('id', 'name', 'plan_type').order_by('name').distinct()
+
+        return Response(list(plans))
+
     @action(detail=True, methods=['post'])
     def copy_to_next_period(self, request, pk=None):
         """Copia il piano di spesa al periodo successivo"""
