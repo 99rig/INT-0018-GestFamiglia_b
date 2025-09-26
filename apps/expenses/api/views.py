@@ -35,7 +35,9 @@ class ExpenseViewSet(viewsets.ModelViewSet):
 
         # Se l'utente non appartiene a nessuna famiglia, vede solo le sue spese
         if not user.family:
-            return Expense.objects.filter(user=user)
+            return Expense.objects.filter(user=user).select_related(
+                'user', 'category', 'subcategory', 'spending_plan'
+            ).prefetch_related('shared_with', 'attachments', 'quote')
 
         # Restituisce:
         # 1. Le spese create dall'utente stesso
@@ -45,7 +47,9 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             Q(user=user) |  # Spese proprie
             Q(spending_plan__is_shared=True, user__family=user.family) |  # Spese di piani condivisi
             Q(shared_with=user)  # Spese condivise direttamente
-        ).distinct()
+        ).distinct().select_related(
+            'user', 'category', 'subcategory', 'spending_plan'
+        ).prefetch_related('shared_with', 'attachments', 'quote')
     
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:

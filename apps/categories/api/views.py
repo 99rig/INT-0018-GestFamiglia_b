@@ -17,7 +17,7 @@ from .serializers import (
 
 class CategoryViewSet(viewsets.ModelViewSet):
     """ViewSet per la gestione delle categorie"""
-    queryset = Category.objects.filter(is_active=True)
+    queryset = Category.objects.filter(is_active=True).prefetch_related('subcategories')
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['type', 'is_active']
