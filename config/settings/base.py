@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     'apps.categories',
     'apps.reports',
     'apps.updates',
+    'apps.contributions',
 ]
 
 MIDDLEWARE = [

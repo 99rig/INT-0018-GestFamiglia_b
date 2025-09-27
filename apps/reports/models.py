@@ -228,6 +228,11 @@ class PlannedExpense(models.Model):
         default=False,
         verbose_name="Completata"
     )
+    is_hidden = models.BooleanField(
+        default=False,
+        verbose_name="Nascosta",
+        help_text="Nascondi questa spesa dalla visualizzazione (utile per spese già pagate)"
+    )
     actual_expense = models.ForeignKey(
         'expenses.Expense',
         on_delete=models.SET_NULL,

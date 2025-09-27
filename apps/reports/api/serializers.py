@@ -40,16 +40,17 @@ class PlannedExpenseSerializer(serializers.ModelSerializer):
     is_fully_paid = serializers.SerializerMethodField()
     is_partially_paid = serializers.SerializerMethodField()
     actual_payments_count = serializers.SerializerMethodField()
+    paid_by_users = serializers.SerializerMethodField()
 
     class Meta:
         model = PlannedExpense
         fields = [
             'id', 'spending_plan', 'description', 'amount', 'category', 'category_detail',
             'subcategory', 'subcategory_detail', 'priority', 'due_date',
-            'notes', 'is_completed', 'created_at', 'updated_at',
+            'notes', 'is_completed', 'is_hidden', 'created_at', 'updated_at',
             'total_paid', 'remaining_amount', 'completion_percentage',
             'payment_status', 'is_fully_paid', 'is_partially_paid',
-            'actual_payments_count',
+            'actual_payments_count', 'paid_by_users',
             # Campi ricorrenza
             'is_recurring', 'total_installments', 'installment_number',
             'parent_recurring_id', 'recurring_frequency'
@@ -57,7 +58,7 @@ class PlannedExpenseSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'created_at', 'updated_at', 'total_paid', 'remaining_amount',
             'completion_percentage', 'payment_status', 'is_fully_paid',
-            'is_partially_paid', 'actual_payments_count'
+            'is_partially_paid', 'actual_payments_count', 'paid_by_users'
         ]
 
     def get_total_paid(self, obj):
@@ -88,6 +89,25 @@ class PlannedExpenseSerializer(serializers.ModelSerializer):
         """Numero di pagamenti effettuati"""
         return obj.get_related_expenses().count()
 
+    def get_paid_by_users(self, obj):
+        """Restituisce gli utenti che hanno pagato le spese collegate"""
+        expenses = obj.get_related_expenses()
+        users = []
+        user_names = set()
+
+        for expense in expenses:
+            if expense.user and expense.user.get_full_name() not in user_names:
+                user_names.add(expense.user.get_full_name())
+                users.append({
+                    'id': expense.user.id,
+                    'first_name': expense.user.first_name,
+                    'last_name': expense.user.last_name,
+                    'full_name': expense.user.get_full_name(),
+                    'amount_paid': str(expense.amount)
+                })
+
+        return users
+
 
 class PlannedExpenseLightSerializer(serializers.ModelSerializer):
     """Serializer leggero per le spese pianificate con campi essenziali per il frontend"""
@@ -102,6 +122,7 @@ class PlannedExpenseLightSerializer(serializers.ModelSerializer):
     is_fully_paid = serializers.SerializerMethodField()
     is_partially_paid = serializers.SerializerMethodField()
     actual_payments_count = serializers.SerializerMethodField()
+    paid_by_users = serializers.SerializerMethodField()
 
     # Informazioni sulle rate ricorrenti collegate
     recurring_installments_status = serializers.SerializerMethodField()
@@ -112,10 +133,10 @@ class PlannedExpenseLightSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'spending_plan', 'description', 'amount', 'category', 'category_detail',
             'subcategory', 'subcategory_detail', 'priority', 'due_date',
-            'notes', 'is_completed', 'created_at', 'updated_at',
+            'notes', 'is_completed', 'is_hidden', 'created_at', 'updated_at',
             'total_paid', 'remaining_amount', 'completion_percentage',
             'payment_status', 'is_fully_paid', 'is_partially_paid',
-            'actual_payments_count',
+            'actual_payments_count', 'paid_by_users',
             # Campi ricorrenza
             'is_recurring', 'total_installments', 'installment_number',
             'parent_recurring_id', 'recurring_frequency',
@@ -124,7 +145,7 @@ class PlannedExpenseLightSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'created_at', 'updated_at', 'total_paid', 'remaining_amount',
             'completion_percentage', 'payment_status', 'is_fully_paid',
-            'is_partially_paid', 'actual_payments_count', 'recurring_installments_status',
+            'is_partially_paid', 'actual_payments_count', 'paid_by_users', 'recurring_installments_status',
             'recurring_installments_summary'
         ]
 
@@ -214,6 +235,25 @@ class PlannedExpenseLightSerializer(serializers.ModelSerializer):
             'pending_amount': str(pending_amount),
             'total_count': installments.count()
         }
+
+    def get_paid_by_users(self, obj):
+        """Restituisce gli utenti che hanno pagato le spese collegate"""
+        expenses = obj.get_related_expenses()
+        users = []
+        user_names = set()
+
+        for expense in expenses:
+            if expense.user and expense.user.get_full_name() not in user_names:
+                user_names.add(expense.user.get_full_name())
+                users.append({
+                    'id': expense.user.id,
+                    'first_name': expense.user.first_name,
+                    'last_name': expense.user.last_name,
+                    'full_name': expense.user.get_full_name(),
+                    'amount_paid': str(expense.amount)
+                })
+
+        return users
 
 
 class PlannedExpenseCreateUpdateSerializer(serializers.ModelSerializer):

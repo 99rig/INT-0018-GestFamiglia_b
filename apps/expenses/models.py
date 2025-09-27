@@ -16,7 +16,13 @@ class Expense(models.Model):
         ('bonifico', 'Bonifico'),
         ('assegno', 'Assegno'),
         ('paypal', 'PayPal'),
+        ('contributo', 'Da Contributo Famiglia'),
         ('altro', 'Altro'),
+    ]
+
+    PAYMENT_SOURCE_CHOICES = [
+        ('personal', 'Fondi Personali'),
+        ('contribution', 'Da Contributo Famiglia'),
     ]
     
     STATUS_CHOICES = [
@@ -121,6 +127,13 @@ class Expense(models.Model):
         verbose_name="Piano di Spesa",
         help_text="Piano di spesa a cui appartiene questa spesa"
     )
+    payment_source = models.CharField(
+        max_length=20,
+        choices=PAYMENT_SOURCE_CHOICES,
+        default='personal',
+        verbose_name="Fonte del Pagamento",
+        help_text="Indica se il pagamento viene da fondi personali o dal contributo famiglia"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -172,13 +185,30 @@ class Expense(models.Model):
         """Calcola la percentuale di completamento dei pagamenti"""
         if not self.has_quote():
             return 100.0 if self.status == 'pagata' else 0.0
-        
+
         total_amount = self.amount
         paid_amount = self.get_total_paid_amount()
-        
+
         if total_amount > 0:
             return float((paid_amount / total_amount) * 100)
         return 0.0
+
+    def get_contributions_used(self):
+        """Restituisce i contributi utilizzati per questa spesa"""
+        from apps.contributions.models import ExpenseContribution
+        return ExpenseContribution.objects.filter(expense=self)
+
+    def get_total_contribution_amount(self):
+        """Calcola il totale prelevato dai contributi per questa spesa"""
+        from django.db.models import Sum
+        total = self.expense_contributions.aggregate(
+            total=Sum('amount_used')
+        )['total'] or Decimal('0.00')
+        return total
+
+    def is_paid_with_contribution(self):
+        """Verifica se la spesa è pagata con contributi famiglia"""
+        return self.payment_source == 'contribution' or self.payment_method == 'contributo'
     
     def get_next_due_quota(self):
         """Restituisce la prossima quota in scadenza"""

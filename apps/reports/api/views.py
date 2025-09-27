@@ -306,11 +306,21 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def add_payment(self, request, pk=None):
         """Aggiunge un pagamento a una spesa pianificata"""
-        planned_expense = self.get_object()
+        try:
+            print(f"🔍 Inizio add_payment con dati: {request.data}")
+            planned_expense = self.get_object()
+            print(f"🔍 Spesa pianificata trovata: {planned_expense.id}")
+        except Exception as e:
+            print(f"❌ Errore nel recupero spesa: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         # Validazione dei dati del pagamento
+        print(f"🔍 Request data: {request.data}")
         amount = request.data.get('amount')
         description = request.data.get('description', f'Pagamento per {planned_expense.description}')
+        print(f"🔍 Amount: {amount}, Description: {description}")
 
         # Handle category - can be an ID from request or Category instance from planned_expense
         category_data = request.data.get('category')
@@ -343,6 +353,9 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
             subcategory = planned_expense.subcategory
 
         date = request.data.get('date')
+        payment_method = request.data.get('payment_method', 'carta')
+        payment_source = request.data.get('payment_source', 'personal')
+        print(f"🔍 Parsed: date={date}, method={payment_method}, source={payment_source}")
 
         if not amount:
             return Response(
@@ -366,13 +379,53 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
 
         # Verifica che il pagamento non superi l'importo rimanente
         remaining = planned_expense.get_remaining_amount()
+        print(f"🔍 Amount validation: amount={amount}, remaining={remaining}")
         if amount > remaining:
             return Response(
                 {'detail': f'Il pagamento di €{amount} supera l\'importo rimanente di €{remaining}.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Se la fonte è 'contribution', verifica e gestisci i contributi famiglia
+        available_contributions = None
+        if payment_source == 'contribution':
+            try:
+                print(f"🔍 Processing contribution payment")
+                if not request.user.family:
+                    print(f"🔍 User has no family")
+                    return Response(
+                        {'detail': 'Utente non appartiene a nessuna famiglia.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                from apps.contributions.models import Contribution, ExpenseContribution
+                print(f"🔍 User family: {request.user.family.id}")
+
+                # Verifica saldo disponibile
+                available_contributions = Contribution.objects.filter(
+                    family=request.user.family,
+                    available_balance__gt=0
+                ).order_by('created_at')
+                print(f"🔍 Found {available_contributions.count()} available contributions")
+
+                total_available = sum(c.available_balance for c in available_contributions)
+                print(f"🔍 Total available: €{total_available}")
+
+                if amount > total_available:
+                    print(f"🔍 Insufficient balance: requested {amount}, available {total_available}")
+                    return Response(
+                        {'detail': f'Saldo insufficiente. Disponibile: €{total_available}, richiesto: €{amount}'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except Exception as e:
+                print(f"❌ ERRORE in contribution validation: {e}")
+                import traceback
+                traceback.print_exc()
+                return Response({'detail': f'Errore nella gestione contributi: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         # Crea la spesa reale collegata
+        print(f"🔍 Preparing expense data...")
+        from datetime import datetime
         expense_data = {
             'description': description,
             'amount': amount,
@@ -381,23 +434,71 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
             'user': request.user,
             'date': date or datetime.now().date(),
             'status': 'pagata',
-            'planned_expense': planned_expense
+            'planned_expense': planned_expense,
+            'payment_method': payment_method,
+            'payment_source': payment_source
         }
+        print(f"🔍 Expense data prepared successfully")
 
-        from apps.expenses.models import Expense
-        expense = Expense.objects.create(**expense_data)
+        try:
+            from apps.expenses.models import Expense
+            print(f"🔍 Creating expense with data: {expense_data}")
+            expense = Expense.objects.create(**expense_data)
+            print(f"🔍 Expense created successfully with ID: {expense.id}")
+        except Exception as e:
+            print(f"❌ ERRORE nella creazione spesa: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response({'detail': f'Errore nella creazione della spesa: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Aggiorna lo stato della spesa pianificata se completamente pagata
-        if planned_expense.is_fully_paid():
-            planned_expense.is_completed = True
-            planned_expense.save()
+        try:
+            # Se la fonte è 'contribution', registra l'utilizzo dei contributi con logica FIFO
+            if payment_source == 'contribution':
+                print(f"🔍 Payment source is contribution, available_contributions={available_contributions is not None}")
+                if available_contributions:
+                    print(f"🔍 Processing contributions usage")
+                    remaining_amount = amount
 
-        serializer = PlannedExpenseSerializer(planned_expense)
-        return Response({
-            'planned_expense': serializer.data,
-            'expense_id': expense.id,
-            'message': 'Pagamento aggiunto con successo.'
-        }, status=status.HTTP_201_CREATED)
+                    for contribution in available_contributions:
+                        if remaining_amount <= 0:
+                            break
+
+                        # Calcola quanto usare da questo contributo
+                        use_amount = min(remaining_amount, contribution.available_balance)
+                        print(f"🔍 Using {use_amount} from contribution {contribution.id}")
+
+                        # Crea il record di utilizzo
+                        ExpenseContribution.objects.create(
+                            contribution=contribution,
+                            expense=expense,
+                            amount_used=use_amount
+                        )
+
+                        # Aggiorna il saldo disponibile
+                        contribution.available_balance -= use_amount
+                        contribution.save()
+
+                        remaining_amount -= use_amount
+
+            # Aggiorna lo stato della spesa pianificata se completamente pagata
+            print(f"🔍 Checking if expense is fully paid")
+            if planned_expense.is_fully_paid():
+                planned_expense.is_completed = True
+                planned_expense.save()
+                print(f"🔍 Planned expense marked as completed")
+
+            print(f"🔍 Preparing response")
+            serializer = PlannedExpenseSerializer(planned_expense)
+            return Response({
+                'planned_expense': serializer.data,
+                'expense_id': expense.id,
+                'message': 'Pagamento aggiunto con successo.'
+            }, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            print(f"❌ ERRORE nella finalizzazione: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response({'detail': f'Errore nella finalizzazione: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['get'])
     def by_status(self, request):
@@ -719,6 +820,39 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
             'updated_summary': updated_summary
         })
 
+    @action(detail=True, methods=['get'])
+    def payments(self, request, pk=None):
+        """
+        Restituisce tutti i pagamenti di una spesa pianificata, inclusi quelli di altri membri della famiglia
+        """
+        from apps.expenses.api.serializers import ExpenseSerializer
+
+        planned_expense = self.get_object()
+        user = request.user
+
+        # Verifica che l'utente abbia accesso alla spesa pianificata
+        if not user.family:
+            return Response(
+                {'detail': 'Famiglia richiesta per accedere ai pagamenti'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Verifica che il piano di spesa sia condiviso o che l'utente abbia accesso
+        if not planned_expense.spending_plan.is_shared and user not in planned_expense.spending_plan.users.all():
+            return Response(
+                {'detail': 'Non hai accesso ai pagamenti di questa spesa'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Restituisce tutti i pagamenti della famiglia per questa spesa pianificata
+        payments = Expense.objects.filter(
+            planned_expense=planned_expense,
+            user__family=user.family  # Solo utenti della stessa famiglia
+        ).select_related('user', 'category', 'subcategory', 'spending_plan').order_by('-date', '-created_at')
+
+        serializer = ExpenseSerializer(payments, many=True)
+        return Response(serializer.data)
+
     def _get_or_create_plan_for_date(self, target_date, template_plan, user):
         """Helper: trova o crea un piano per la data target"""
         from apps.reports.models import SpendingPlan
@@ -803,6 +937,57 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(start_date__lte=three_months_from_now)
 
         return queryset
+
+    def list(self, request, *args, **kwargs):
+        """Override list per aggiungere il conteggio totale ed evitare doppia chiamata API"""
+        from django.db.models import Q
+        from django.utils import timezone
+        from dateutil.relativedelta import relativedelta
+
+        user = request.user
+        show_all = request.query_params.get('show_all', 'false').lower() == 'true'
+
+        # Base queryset (stesso logic di get_queryset)
+        personal_plans = Q(created_by=user, is_shared=False)
+        family_plans = Q()
+        if user.family:
+            family_users = user.family.members.all()
+            family_plans = Q(users__in=family_users, is_shared=True)
+
+        base_queryset = SpendingPlan.objects.filter(
+            personal_plans | family_plans
+        ).select_related(
+            'created_by'
+        ).prefetch_related(
+            'users',
+            'planned_expenses__category',
+            'planned_expenses__subcategory'
+        ).distinct()
+
+        # Conta il totale dei piani (senza filtro temporale)
+        total_count = base_queryset.count()
+
+        # Applica filtro temporale se richiesto
+        if not show_all:
+            today = timezone.now().date()
+            three_months_from_now = today + relativedelta(months=3)
+            base_queryset = base_queryset.filter(start_date__lte=three_months_from_now)
+
+        # Filtra piani nascosti
+        queryset = base_queryset.filter(is_hidden=False)
+
+        # Serializza i risultati
+        serializer = self.get_serializer(queryset, many=True)
+
+        # Aggiungi metadati nella risposta
+        response_data = {
+            'results': serializer.data,
+            'count': len(serializer.data),
+            'total_count': total_count,
+            'show_all': show_all
+        }
+
+        return Response(response_data)
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:

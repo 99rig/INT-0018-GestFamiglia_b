@@ -195,6 +195,106 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         new_expense.shared_with.set(expense.shared_with.all())
         serializer = ExpenseSerializer(new_expense)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def pay_expense(self, request, pk=None):
+        """Paga una spesa esistente con possibilità di scegliere la fonte"""
+        expense = self.get_object()
+
+        # Verifica che la spesa non sia già pagata
+        if expense.status == 'pagata':
+            return Response(
+                {"detail": "La spesa è già stata pagata"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        payment_method = request.data.get('payment_method', expense.payment_method)
+        payment_source = request.data.get('payment_source', 'personal')
+
+        # Se si paga con contributi, verifica disponibilità
+        if payment_source == 'contribution':
+            from apps.contributions.models import FamilyBalance
+            from decimal import Decimal
+
+            user = request.user
+            if not user.family:
+                return Response(
+                    {"detail": "Utente non associato a una famiglia"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Verifica bilancio famiglia
+            try:
+                family_balance = FamilyBalance.objects.get(family=user.family)
+                family_balance.update_balance()
+
+                if family_balance.current_balance < expense.amount:
+                    return Response(
+                        {"detail": f"Bilancio famiglia insufficiente. Disponibile: €{family_balance.current_balance}, Richiesto: €{expense.amount}"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except FamilyBalance.DoesNotExist:
+                return Response(
+                    {"detail": "Bilancio famiglia non trovato"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Usa i contributi per pagare la spesa
+            from apps.contributions.models import Contribution, ExpenseContribution
+
+            # Trova contributi disponibili ordinati per data (FIFO)
+            available_contributions = Contribution.objects.filter(
+                user__family=user.family,
+                available_balance__gt=0
+            ).order_by('date')
+
+            remaining_amount = expense.amount
+            used_contributions = []
+
+            for contribution in available_contributions:
+                if remaining_amount <= 0:
+                    break
+
+                amount_to_use = min(remaining_amount, contribution.available_balance)
+
+                # Crea il collegamento spesa-contributo
+                expense_contribution = ExpenseContribution.objects.create(
+                    expense=expense,
+                    contribution=contribution,
+                    amount_used=amount_to_use
+                )
+
+                # Aggiorna il saldo del contributo
+                contribution.use_amount(amount_to_use)
+
+                used_contributions.append({
+                    'contribution_id': contribution.id,
+                    'amount_used': amount_to_use
+                })
+
+                remaining_amount -= amount_to_use
+
+            # Aggiorna il bilancio famiglia
+            family_balance.update_balance()
+
+        # Aggiorna la spesa
+        expense.status = 'pagata'
+        expense.payment_method = payment_method
+        expense.payment_source = payment_source
+        expense.save()
+
+        serializer = ExpenseSerializer(expense)
+
+        response_data = {
+            'expense': serializer.data,
+            'message': 'Spesa pagata con successo'
+        }
+
+        if payment_source == 'contribution':
+            response_data['used_contributions'] = used_contributions
+            response_data['updated_balance'] = float(family_balance.current_balance)
+
+        return Response(response_data, status=status.HTTP_200_OK)
     
     @action(detail=True, methods=['post'])
     def create_quote(self, request, pk=None):
@@ -425,6 +525,65 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             'generated_count': len(generated_expenses),
             'generated_expenses': generated_expenses[:5]  # Mostra solo le prime 5
         }, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'])
+    def batch_by_planned_expenses(self, request):
+        """
+        Endpoint ottimizzato per caricare expenses di multiple planned expenses in una sola chiamata.
+        Accetta: ?planned_expense_ids=1,2,3,4,5
+        Restituisce: {planned_expense_id: [expenses], ...}
+        """
+        planned_expense_ids_param = request.query_params.get('planned_expense_ids', '')
+
+        if not planned_expense_ids_param:
+            return Response({
+                'detail': 'Parametro planned_expense_ids richiesto (es: ?planned_expense_ids=1,2,3)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Parse IDs da stringa comma-separated
+            planned_expense_ids = [int(id.strip()) for id in planned_expense_ids_param.split(',') if id.strip()]
+        except ValueError:
+            return Response({
+                'detail': 'planned_expense_ids deve contenere solo numeri separati da virgole'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if not planned_expense_ids:
+            return Response({
+                'detail': 'Almeno un planned_expense_id è richiesto'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Limita il numero massimo di IDs per evitare query troppo grosse
+        if len(planned_expense_ids) > 50:
+            return Response({
+                'detail': 'Massimo 50 planned_expense_ids per chiamata'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Query ottimizzata con prefetch
+        expenses = self.get_queryset().filter(
+            planned_expense__in=planned_expense_ids
+        ).select_related(
+            'user', 'category', 'subcategory', 'planned_expense'
+        ).prefetch_related(
+            'shared_with', 'attachments'
+        ).order_by('-date', '-created_at')
+
+        # Organizza per planned_expense_id
+        expenses_by_planned = {}
+        for planned_id in planned_expense_ids:
+            expenses_by_planned[planned_id] = []
+
+        for expense in expenses:
+            if expense.planned_expense_id in expenses_by_planned:
+                expenses_by_planned[expense.planned_expense_id].append(
+                    ExpenseSerializer(expense).data
+                )
+
+        return Response({
+            'expenses_by_planned_expense': expenses_by_planned,
+            'total_expenses': len(expenses),
+            'planned_expense_ids_requested': planned_expense_ids
+        })
 
 
 class RecurringExpenseViewSet(viewsets.ModelViewSet):
