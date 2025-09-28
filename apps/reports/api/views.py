@@ -884,7 +884,7 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
             is_shared=template_plan.is_shared,
             created_by=user,
             auto_generated=True,
-            is_hidden=True  # Nascosto per default
+            is_hidden=False  # Visibile se contiene spese ricorrenti
         )
 
         # Copia gli utenti
