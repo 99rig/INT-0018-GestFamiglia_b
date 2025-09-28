@@ -174,8 +174,11 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",  # React
     "http://localhost:9000",  # Quasar
     "http://127.0.0.1:9000",  # Quasar
+    "http://localhost:9001",  # Quasar dev
+    "http://127.0.0.1:9001",  # Quasar dev
     "http://192.168.1.125:9000",  # Quasar da rete locale
     "http://192.168.1.125:8000",  # Django API da rete locale
+    "https://lacrazyfamily.com",  # Produzione
     "capacitor://localhost",  # Capacitor Android
     "https://localhost",  # Capacitor iOS
 ]
