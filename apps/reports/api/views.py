@@ -622,9 +622,15 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
         missing_count = planned_expense.total_installments - existing_count
 
         if missing_count <= 0:
+            # Prepara messaggio informativo
+            detail_msg = 'Tutte le rate sono già state generate.'
+            if orphaned_count > 0:
+                detail_msg += f' (Pulite {orphaned_count} rate orfane automaticamente)'
+
             return Response({
-                'detail': 'Tutte le rate sono già state generate.',
+                'detail': detail_msg,
                 'existing_installments': existing_count,
+                'orphaned_cleaned': orphaned_count,
                 'total_installments': planned_expense.total_installments
             })
 
