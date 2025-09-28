@@ -5,8 +5,8 @@ from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 SETTINGS_DIR = os.path.abspath(os.path.dirname(__file__))
-BASE_DIR = Path(__file__).resolve().parent
-
+BASE_DIR = Path(__file__).resolve().parent.parent
+print("BASE_DIR:", BASE_DIR)
 
 # Aggiunge la cartella apps al path
 sys.path.insert(0, os.path.join(BASE_DIR, 'apps'))
@@ -91,13 +91,9 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
+# Database configuration moved to environment-specific files
+# (local.py, production.py, etc.)
 DATABASES = {
-    # Default database for Docker build (collectstatic)
-    # Will be overridden by local.py or production.py
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    },
     'updates_db': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'updates.sqlite3',
