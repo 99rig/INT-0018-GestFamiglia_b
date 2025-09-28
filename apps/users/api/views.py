@@ -15,7 +15,9 @@ from .serializers import (
     FamilyCreateSerializer,
     FamilyInvitationSerializer,
     FamilyInvitationCreateSerializer,
-    JoinFamilySerializer
+    JoinFamilySerializer,
+    PasswordResetRequestSerializer,
+    PasswordResetConfirmSerializer
 )
 
 User = get_user_model()
@@ -257,3 +259,93 @@ class FamilyInvitationViewSet(viewsets.ModelViewSet):
             'detail': f'Invito accettato! Ti sei unito alla famiglia "{invitation.family.name}".',
             'family': FamilySerializer(invitation.family).data
         })
+
+
+class PasswordResetRequestView(generics.GenericAPIView):
+    """Vista per richiedere il reset della password via email"""
+    serializer_class = PasswordResetRequestSerializer
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            email = serializer.validated_data['email']
+
+            # Verifica se l'utente esiste (il serializer gestisce già questa logica)
+            try:
+                user = User.objects.get(email=email, is_active=True)
+
+                # Crea il token di reset
+                from apps.users.models import PasswordResetToken
+                reset_token = PasswordResetToken.objects.create(user=user)
+
+                # Genera il link completo e invia email
+                from django.conf import settings
+                from django.core.mail import send_mail
+
+                reset_url = f"{settings.FRONTEND_URL}/reset-password?token={reset_token.token}"
+
+                # Invia email con il link
+                subject = 'Reset Password - My Crazy Family'
+                message = f"""
+Ciao {user.first_name if user.first_name else user.email},
+
+Hai richiesto il reset della password per il tuo account My Crazy Family.
+
+Clicca sul link seguente per reimpostare la password:
+{reset_url}
+
+Questo link è valido per 24 ore.
+
+Se non hai richiesto tu questo reset, puoi ignorare questa email.
+
+Saluti,
+Il team di My Crazy Family
+                """.strip()
+
+                try:
+                    send_mail(
+                        subject,
+                        message,
+                        settings.DEFAULT_FROM_EMAIL,
+                        [user.email],
+                        fail_silently=False,
+                    )
+                    print(f"Password reset email sent to {user.email}")
+                except Exception as e:
+                    print(f"Failed to send email to {user.email}: {e}")
+
+                # Per testing, logga anche il link
+                print(f"Password reset link for {user.email}: {reset_url}")
+
+                # Restituisci sempre successo per sicurezza
+                return Response({
+                    'detail': 'Se l\'email esiste nel sistema, riceverai un link per il reset della password.',
+                    'reset_url': reset_url  # Solo per testing, rimuovere in produzione
+                }, status=status.HTTP_200_OK)
+
+            except User.DoesNotExist:
+                # Per sicurezza, non rivelare che l'email non esiste
+                return Response({
+                    'detail': 'Se l\'email esiste nel sistema, riceverai un link per il reset della password.'
+                }, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PasswordResetConfirmView(generics.GenericAPIView):
+    """Vista per confermare il reset della password con token"""
+    serializer_class = PasswordResetConfirmSerializer
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            # Il serializer gestisce la validazione del token e il cambio password
+            user = serializer.save()
+
+            return Response({
+                'detail': 'Password cambiata con successo! Ora puoi effettuare il login.'
+            }, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

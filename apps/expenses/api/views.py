@@ -45,7 +45,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         # 3. Le spese condivise direttamente con l'utente
         return Expense.objects.filter(
             Q(user=user) |  # Spese proprie
-            Q(spending_plan__is_shared=True, user__family=user.family) |  # Spese di piani condivisi
+            Q(spending_plan__plan_scope='family', user__family=user.family) |  # Spese di piani condivisi
             Q(shared_with=user)  # Spese condivise direttamente
         ).distinct().select_related(
             'user', 'category', 'subcategory', 'spending_plan'

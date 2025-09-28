@@ -50,7 +50,7 @@ class SpendingPlanAdmin(admin.ModelAdmin):
             'fields': ('start_date', 'end_date')
         }),
         ('Configurazioni Avanzate', {
-            'fields': ('is_shared', 'is_hidden', 'auto_generated'),
+            'fields': ('plan_scope', 'is_hidden', 'auto_generated'),
             'classes': ('collapse',)
         }),
         ('Utenti', {

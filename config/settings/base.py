@@ -227,3 +227,6 @@ EMAIL_HOST_PASSWORD = 'Mumble100%'  # Password Zoho
 # Default email settings
 DEFAULT_FROM_EMAIL = 'My Crazy Family <no-reply@lacrazyfamily.com>'
 EMAIL_SUBJECT_PREFIX = '[My Crazy Family] '
+
+# Frontend URL settings
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://lacrazyfamily.com/app')

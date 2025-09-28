@@ -865,7 +865,7 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
             )
 
         # Verifica che il piano di spesa sia condiviso o che l'utente abbia accesso
-        if not planned_expense.spending_plan.is_shared and user not in planned_expense.spending_plan.users.all():
+        if planned_expense.spending_plan.plan_scope == 'personal' and user not in planned_expense.spending_plan.users.all():
             return Response(
                 {'detail': 'Non hai accesso ai pagamenti di questa spesa'},
                 status=status.HTTP_403_FORBIDDEN
@@ -908,7 +908,7 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
             start_date=start_date,
             end_date=end_date,
             total_budget=template_plan.total_budget,
-            is_shared=template_plan.is_shared,
+            plan_scope=template_plan.plan_scope,
             created_by=user,
             auto_generated=True,
             is_hidden=False  # Visibile se contiene spese ricorrenti
@@ -936,13 +936,13 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
         from dateutil.relativedelta import relativedelta
 
         # Piani personali (creati dall'utente e non condivisi)
-        personal_plans = Q(created_by=user, is_shared=False)
+        personal_plans = Q(created_by=user, plan_scope='personal')
 
         # Piani condivisi con la famiglia (se l'utente ha una famiglia)
         family_plans = Q()
         if user.family:
             family_users = user.family.members.all()
-            family_plans = Q(users__in=family_users, is_shared=True)
+            family_plans = Q(users__in=family_users, plan_scope='family')
 
         # Query base
         queryset = SpendingPlan.objects.filter(
@@ -975,11 +975,11 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
         show_all = request.query_params.get('show_all', 'false').lower() == 'true'
 
         # Base queryset (stesso logic di get_queryset)
-        personal_plans = Q(created_by=user, is_shared=False)
+        personal_plans = Q(created_by=user, plan_scope='personal')
         family_plans = Q()
         if user.family:
             family_users = user.family.members.all()
-            family_plans = Q(users__in=family_users, is_shared=True)
+            family_plans = Q(users__in=family_users, plan_scope='family')
 
         base_queryset = SpendingPlan.objects.filter(
             personal_plans | family_plans
@@ -1055,13 +1055,13 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
         from django.db.models import Q
 
         # Piani personali (creati dall'utente e non condivisi)
-        personal_plans = Q(created_by=user, is_shared=False)
+        personal_plans = Q(created_by=user, plan_scope='personal')
 
         # Piani condivisi con la famiglia (se l'utente ha una famiglia)
         family_plans = Q()
         if user.family:
             family_users = user.family.members.all()
-            family_plans = Q(users__in=family_users, is_shared=True)
+            family_plans = Q(users__in=family_users, plan_scope='family')
 
         # Query ottimizzata - solo campi necessari per select
         plans = SpendingPlan.objects.filter(
@@ -1198,7 +1198,7 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
                     'total_budget': str(plan.total_budget) if plan.total_budget else None,
                     'start_date': new_start_date.isoformat(),
                     'end_date': new_end_date.isoformat(),
-                    'is_shared': plan.is_shared,
+                    'plan_scope': plan.plan_scope,
                     'planned_expenses_detail': simulated_expenses
                 },
                 'cloning_details': {
@@ -1228,7 +1228,7 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
             total_budget=plan.total_budget,
             start_date=new_start_date,
             end_date=new_end_date,
-            is_shared=plan.is_shared,
+            plan_scope=plan.plan_scope,
             is_active=True,
             created_by=request.user
         )

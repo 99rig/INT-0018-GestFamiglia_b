@@ -315,3 +315,65 @@ class FamilyInvitation(models.Model):
     def can_be_accepted(self):
         """Verifica se l'invito può essere accettato"""
         return self.status == 'pending' and not self.is_expired()
+
+
+class PasswordResetToken(models.Model):
+    """
+    Modello per gestire i token di reset password
+    """
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='password_reset_tokens',
+        verbose_name="Utente"
+    )
+    token = models.CharField(
+        max_length=64,
+        unique=True,
+        verbose_name="Token"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(
+        verbose_name="Scade il"
+    )
+    used_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Utilizzato il"
+    )
+
+    class Meta:
+        verbose_name = "Token Reset Password"
+        verbose_name_plural = "Token Reset Password"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Reset token per {self.user.email} - {self.token[:8]}..."
+
+    def save(self, *args, **kwargs):
+        if not self.token:
+            import secrets
+            self.token = secrets.token_urlsafe(48)
+
+        if not self.expires_at:
+            from datetime import timedelta
+            self.expires_at = timezone.now() + timedelta(hours=24)
+
+        super().save(*args, **kwargs)
+
+    def is_expired(self):
+        """Verifica se il token è scaduto"""
+        return timezone.now() > self.expires_at
+
+    def is_used(self):
+        """Verifica se il token è già stato utilizzato"""
+        return self.used_at is not None
+
+    def can_be_used(self):
+        """Verifica se il token può essere utilizzato"""
+        return not self.is_expired() and not self.is_used()
+
+    def mark_as_used(self):
+        """Marca il token come utilizzato"""
+        self.used_at = timezone.now()
+        self.save(update_fields=['used_at'])

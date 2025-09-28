@@ -442,3 +442,64 @@ class JoinFamilySerializer(serializers.Serializer):
             profile.save()
 
         return family
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    """Serializer per richiedere il reset della password"""
+    email = serializers.EmailField(required=True)
+
+    def validate_email(self, value):
+        """Verifica che l'email esista nel sistema"""
+        try:
+            user = User.objects.get(email=value, is_active=True)
+            self.user = user
+            return value
+        except User.DoesNotExist:
+            # Per sicurezza, non rivelare che l'email non esiste
+            # Restituiamo sempre successo ma logghiamo l'errore
+            return value
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """Serializer per confermare il reset della password con token"""
+    token = serializers.CharField(required=True)
+    new_password = serializers.CharField(
+        required=True,
+        validators=[validate_password]
+    )
+    new_password2 = serializers.CharField(required=True)
+
+    def validate(self, attrs):
+        if attrs['new_password'] != attrs['new_password2']:
+            raise serializers.ValidationError({
+                "new_password": "I campi password non corrispondono."
+            })
+        return attrs
+
+    def validate_token(self, value):
+        """Verifica che il token sia valido e non scaduto"""
+        try:
+            from apps.users.models import PasswordResetToken
+            token = PasswordResetToken.objects.get(token=value)
+
+            if not token.can_be_used():
+                if token.is_expired():
+                    raise serializers.ValidationError("Il token è scaduto.")
+                elif token.is_used():
+                    raise serializers.ValidationError("Il token è già stato utilizzato.")
+
+            self.reset_token = token
+            return value
+        except PasswordResetToken.DoesNotExist:
+            raise serializers.ValidationError("Token non valido.")
+
+    def save(self):
+        """Cambia la password e marca il token come utilizzato"""
+        user = self.reset_token.user
+        user.set_password(self.validated_data['new_password'])
+        user.save()
+
+        # Marca il token come utilizzato
+        self.reset_token.mark_as_used()
+
+        return user

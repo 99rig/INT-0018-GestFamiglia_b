@@ -124,7 +124,7 @@ class Command(BaseCommand):
             start_date=start_date,
             end_date=end_date,
             total_budget=template_plan.total_budget,
-            is_shared=template_plan.is_shared,
+            plan_scope=template_plan.plan_scope,
             created_by=template_plan.created_by,
             auto_generated=True,
             is_hidden=True  # Nascosto per default

@@ -65,11 +65,6 @@ class SpendingPlan(models.Model):
         related_name='spending_plans',
         verbose_name="Utenti"
     )
-    is_shared = models.BooleanField(
-        default=True,
-        verbose_name="Condiviso con famiglia",
-        help_text="Se False, il piano è visibile solo al creatore"
-    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
