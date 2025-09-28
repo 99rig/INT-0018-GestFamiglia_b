@@ -30,6 +30,17 @@ urlpatterns = [
     path('api-auth/', include('rest_framework.urls')),
 ]
 
-if settings.DEBUG:
+# Serve static and media files (including when DEBUG=False for development)
+from django.views.static import serve
+from django.urls import re_path
+import os
+
+if not settings.DEBUG:
+    # Manually serve static files when DEBUG=False (for development only)
+    urlpatterns += [
+        re_path(r'^static/(?P<path>.*)$', serve, {'document_root': settings.STATIC_ROOT}),
+        re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
+    ]
+else:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

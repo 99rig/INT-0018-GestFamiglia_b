@@ -114,7 +114,20 @@ class User(AbstractUser):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    # === ENCRYPTION FIELDS ===
+    encrypted_profile = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Profilo Crittografato",
+        help_text="Dati personali sensibili crittografati (email, nome, telefono, etc.)"
+    )
+    encryption_version = models.IntegerField(
+        default=1,
+        verbose_name="Versione Crittografia",
+        help_text="Versione dell'algoritmo di crittografia utilizzato"
+    )
+
     class Meta:
         verbose_name = "Utente"
         verbose_name_plural = "Utenti"
@@ -155,6 +168,61 @@ class User(AbstractUser):
             self.profile.save()
 
         return family
+
+    # === ENCRYPTION METHODS ===
+    def encrypt_profile_data(self, family_password: str) -> bool:
+        """
+        Crittografa i dati sensibili dell'utente
+
+        Args:
+            family_password: Password della famiglia per derivare la chiave
+
+        Returns:
+            bool: True se la crittografia è riuscita
+        """
+        from .crypto import encrypt_user_data
+        return encrypt_user_data(self, family_password)
+
+    def decrypt_profile_data(self, family_password: str) -> dict:
+        """
+        Decrittografa i dati sensibili dell'utente
+
+        Args:
+            family_password: Password della famiglia per derivare la chiave
+
+        Returns:
+            dict: Dati decrittografati
+        """
+        from .crypto import decrypt_user_data
+        return decrypt_user_data(self, family_password)
+
+    @property
+    def is_profile_encrypted(self) -> bool:
+        """Verifica se il profilo utente è crittografato"""
+        return bool(self.encrypted_profile and self.encrypted_profile.get('data'))
+
+    @property
+    def safe_email(self):
+        """
+        Ritorna l'email sicura (decrittografata se disponibile, altrimenti fallback)
+        NOTA: Questa property richiede il context della famiglia per decrittografare
+        """
+        if self.is_profile_encrypted:
+            # Se è crittografato, non possiamo decrittografarlo senza la password
+            # Ritorna una versione offuscata
+            if self.email:
+                local, domain = self.email.split('@')
+                return f"{local[:2]}***@{domain}"
+            return "***@***.***"
+        return self.email
+
+    @property
+    def safe_display_name(self):
+        """Ritorna un nome visualizzabile sicuro"""
+        if self.is_profile_encrypted:
+            # Se crittografato, usa username o email offuscata
+            return self.username or self.safe_email
+        return self.get_full_name() or self.email
 
 
 class UserProfile(models.Model):

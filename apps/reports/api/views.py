@@ -1297,7 +1297,7 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
 
         # Parametri di paginazione
         page = int(request.query_params.get('page', 1))
-        page_size = int(request.query_params.get('page_size', 20))  # 20 items per page by default
+        page_size = int(request.query_params.get('page_size', 10))  # 10 items per page by default
         offset = (page - 1) * page_size
 
         # Precarica tutto quello che serve con una query ottimizzata
