@@ -600,6 +600,8 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
 
         # Prima pulisci le rate orfane (senza piano di spesa)
         from apps.reports.models import PlannedExpense
+        orphaned_count = 0  # Inizializza sempre
+
         orphaned_installments = PlannedExpense.objects.filter(
             parent_recurring_id=planned_expense.parent_recurring_id,
             spending_plan__isnull=True
