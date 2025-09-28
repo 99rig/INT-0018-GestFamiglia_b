@@ -598,10 +598,23 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
             planned_expense.parent_recurring_id = str(uuid.uuid4())
             planned_expense.save(update_fields=['parent_recurring_id'])
 
-        # Calcola le rate già esistenti
+        # Prima pulisci le rate orfane (senza piano di spesa)
         from apps.reports.models import PlannedExpense
+        orphaned_installments = PlannedExpense.objects.filter(
+            parent_recurring_id=planned_expense.parent_recurring_id,
+            spending_plan__isnull=True
+        ).exclude(id=planned_expense.id)  # Escludi la rata corrente
+
+        orphaned_count = orphaned_installments.count()
+        if orphaned_count > 0:
+            orphaned_installments.delete()
+            # Log per tracciare la pulizia
+            print(f"Auto-pulizia: eliminate {orphaned_count} rate orfane per {planned_expense.description}")
+
+        # Ora calcola le rate esistenti VALIDE (con piano)
         existing_count = PlannedExpense.objects.filter(
-            parent_recurring_id=planned_expense.parent_recurring_id
+            parent_recurring_id=planned_expense.parent_recurring_id,
+            spending_plan__isnull=False
         ).count()
 
         missing_count = planned_expense.total_installments - existing_count
@@ -674,10 +687,16 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
                 planned_expense.notes = f"✅ Rate generate il {timezone.now().strftime('%d/%m/%Y %H:%M')}"
             planned_expense.save(update_fields=['notes'])
 
+        # Prepara messaggio dettagliato
+        detail_msg = f'Generate {len(created_expenses)} rate ricorrenti.'
+        if orphaned_count > 0:
+            detail_msg += f' (Pulite {orphaned_count} rate orfane automaticamente)'
+
         return Response({
-            'detail': f'Generate {len(created_expenses)} rate ricorrenti.',
+            'detail': detail_msg,
             'created_installments': len(created_expenses),
             'created_plans': len(created_plans),
+            'orphaned_cleaned': orphaned_count,
             'total_installments': planned_expense.total_installments,
             'parent_recurring_id': planned_expense.parent_recurring_id
         }, status=status.HTTP_201_CREATED)
