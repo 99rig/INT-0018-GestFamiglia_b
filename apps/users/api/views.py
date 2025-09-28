@@ -289,7 +289,7 @@ class PasswordResetRequestView(generics.GenericAPIView):
                 from django.conf import settings
                 from django.core.mail import send_mail
 
-                reset_url = f"{settings.FRONTEND_URL}/reset-password?token={reset_token.token}"
+                reset_url = f"{settings.FRONTEND_URL}/#/reset-password?token={reset_token.token}"
 
                 # Invia email con il link
                 subject = 'Reset Password - My Crazy Family'
