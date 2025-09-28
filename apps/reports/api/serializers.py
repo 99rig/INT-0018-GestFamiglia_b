@@ -480,7 +480,7 @@ class SpendingPlanSerializer(serializers.ModelSerializer):
     class Meta:
         model = SpendingPlan
         fields = [
-            'id', 'name', 'description', 'plan_type', 'start_date', 'end_date', 'total_budget',
+            'id', 'name', 'description', 'plan_type', 'plan_scope', 'start_date', 'end_date', 'total_budget',
             'users', 'users_detail', 'is_shared', 'created_by', 'created_by_detail',
             'is_active', 'is_hidden', 'auto_generated', 'planned_expenses',
             'total_planned_amount', 'total_unplanned_expenses_amount', 'total_estimated_amount',
@@ -551,7 +551,7 @@ class SpendingPlanDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = SpendingPlan
         fields = [
-            'id', 'name', 'description', 'plan_type', 'start_date', 'end_date',
+            'id', 'name', 'description', 'plan_type', 'plan_scope', 'start_date', 'end_date',
             'total_budget', 'users', 'users_detail', 'is_shared', 'is_active',
             'created_by', 'created_by_detail', 'created_at', 'updated_at',
             'planned_expenses_detail',
@@ -601,8 +601,8 @@ class SpendingPlanCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = SpendingPlan
         fields = [
-            'name', 'description', 'plan_type', 'start_date', 'end_date', 'total_budget',
-            'users', 'is_shared', 'is_active', 'is_hidden', 'auto_generated'
+            'name', 'description', 'plan_type', 'plan_scope', 'start_date', 'end_date', 'total_budget',
+            'users', 'is_active', 'is_hidden', 'auto_generated'
         ]
 
     def validate(self, attrs):

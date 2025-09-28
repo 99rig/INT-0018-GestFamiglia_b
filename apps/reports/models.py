@@ -19,6 +19,11 @@ class SpendingPlan(models.Model):
         ('custom', 'Personalizzato'),
     ]
 
+    PLAN_SCOPE_CHOICES = [
+        ('family', 'Piano Familiare'),
+        ('personal', 'Piano Personale'),
+    ]
+
     name = models.CharField(
         max_length=100,
         verbose_name="Nome piano spese"
@@ -32,6 +37,13 @@ class SpendingPlan(models.Model):
         choices=PLAN_TYPES,
         default='custom',
         verbose_name="Tipo piano"
+    )
+    plan_scope = models.CharField(
+        max_length=10,
+        choices=PLAN_SCOPE_CHOICES,
+        default='family',
+        verbose_name="Ambito piano",
+        help_text="Familiare: condiviso con tutti i membri famiglia. Personale: visibile solo al creatore"
     )
     start_date = models.DateField(
         verbose_name="Data inizio",
@@ -89,7 +101,23 @@ class SpendingPlan(models.Model):
         ordering = ['-start_date', '-created_at']
 
     def __str__(self):
-        return f"{self.name} ({self.start_date} - {self.end_date})"
+        scope_icon = "👥" if self.plan_scope == 'family' else "👤"
+        return f"{scope_icon} {self.name} ({self.start_date} - {self.end_date})"
+
+    @property
+    def is_family_plan(self):
+        """Indica se è un piano familiare"""
+        return self.plan_scope == 'family'
+
+    @property
+    def is_personal_plan(self):
+        """Indica se è un piano personale"""
+        return self.plan_scope == 'personal'
+
+    @property
+    def is_shared(self):
+        """Retrocompatibilità per is_shared"""
+        return self.plan_scope == 'family'
 
     def get_total_planned_amount(self):
         """Calcola l'importo totale pianificato"""
