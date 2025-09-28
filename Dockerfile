@@ -36,6 +36,8 @@ COPY uwsgi.ini /etc/uwsgi.ini
 RUN mkdir -p /var/log/uwsgi
 
 # Esegui collectstatic durante il build (usando --noinput per evitare prompt)
+# Usa le configurazioni base per evitare problemi con il database durante il build
+ENV DJANGO_SETTINGS_MODULE=config.settings.base
 RUN python manage.py collectstatic --noinput
 # Creates a non-root user with an explicit UID and adds permission to access the /app folder
 # For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
