@@ -1283,8 +1283,22 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def details(self, request, pk=None):
-        """Endpoint ottimizzato per ottenere piano + spese pianificate + spese reali in una sola chiamata"""
+        """Endpoint ottimizzato per ottenere piano + spese pianificate + spese reali in una sola chiamata
+
+        Supporta filtri per status:
+        - ?status=all (default) - tutte le spese
+        - ?status=pending - solo spese in attesa
+        - ?status=partial - solo spese parzialmente pagate
+        - ?status=completed - solo spese completate
+        - ?status=overdue - solo spese scadute
+        """
         plan = self.get_object()
+        status_filter = request.query_params.get('status', 'all')
+
+        # Parametri di paginazione
+        page = int(request.query_params.get('page', 1))
+        page_size = int(request.query_params.get('page_size', 20))  # 20 items per page by default
+        offset = (page - 1) * page_size
 
         # Precarica tutto quello che serve con una query ottimizzata
         plan_data = SpendingPlan.objects.filter(
@@ -1299,9 +1313,62 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
             'planned_expenses__actual_payments'
         ).first()
 
-        # Serializza il piano con tutte le spese pianificate usando il serializer ottimizzato
-        from .serializers import SpendingPlanDetailSerializer
-        plan_serializer = SpendingPlanDetailSerializer(plan_data)
+        # Applica filtro status se necessario
+        if status_filter != 'all':
+            # Filtra le spese pianificate direttamente dalla query
+            from datetime import date
+            today = date.today()
+
+            all_planned_expenses = plan_data.planned_expenses.all()
+            filtered_planned_expenses = []
+
+            for pe in all_planned_expenses:
+                payment_status = pe.get_payment_status()
+
+                if status_filter == payment_status:
+                    filtered_planned_expenses.append(pe)
+                elif status_filter == 'overdue' and pe.due_date and pe.due_date < today and payment_status != 'completed':
+                    filtered_planned_expenses.append(pe)
+
+            # Applica paginazione alle spese filtrate
+            total_filtered = len(filtered_planned_expenses)
+            paginated_expenses = filtered_planned_expenses[offset:offset + page_size]
+
+            # Crea response personalizzata con spese filtrate e paginate
+            from .serializers import SpendingPlanSerializer, PlannedExpenseLightSerializer
+            plan_basic_serializer = SpendingPlanSerializer(plan_data)
+            filtered_expenses_serializer = PlannedExpenseLightSerializer(paginated_expenses, many=True)
+
+            # Costruisce manualmente la response con le spese filtrate
+            plan_response = plan_basic_serializer.data
+            plan_response['planned_expenses_detail'] = filtered_expenses_serializer.data
+            plan_response['pagination'] = {
+                'page': page,
+                'page_size': page_size,
+                'total_items': total_filtered,
+                'total_pages': (total_filtered + page_size - 1) // page_size,
+                'has_next': offset + page_size < total_filtered
+            }
+        else:
+            # Per 'all', applica paginazione direttamente
+            all_planned_expenses = list(plan_data.planned_expenses.all())
+            total_items = len(all_planned_expenses)
+            paginated_expenses = all_planned_expenses[offset:offset + page_size]
+
+            # Crea response con paginazione per 'all'
+            from .serializers import SpendingPlanSerializer, PlannedExpenseLightSerializer
+            plan_basic_serializer = SpendingPlanSerializer(plan_data)
+            paginated_expenses_serializer = PlannedExpenseLightSerializer(paginated_expenses, many=True)
+
+            plan_response = plan_basic_serializer.data
+            plan_response['planned_expenses_detail'] = paginated_expenses_serializer.data
+            plan_response['pagination'] = {
+                'page': page,
+                'page_size': page_size,
+                'total_items': total_items,
+                'total_pages': (total_items + page_size - 1) // page_size,
+                'has_next': offset + page_size < total_items
+            }
 
         # Carica le spese reali del piano (non collegate a spese pianificate)
         from apps.expenses.models import Expense
@@ -1312,13 +1379,31 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
             'category', 'subcategory', 'user'
         )
 
+        # Applica filtro anche alle spese non pianificate se necessario
+        if status_filter != 'all':
+            if status_filter == 'completed':
+                unplanned_expenses = unplanned_expenses.filter(status='pagata')
+            elif status_filter == 'pending':
+                unplanned_expenses = unplanned_expenses.filter(status__in=['pianificata', 'in_sospeso'])
+            elif status_filter == 'overdue':
+                from datetime import date
+                today = date.today()
+                unplanned_expenses = unplanned_expenses.filter(
+                    date__lt=today,
+                    status__in=['pianificata', 'in_sospeso']
+                )
+            else:
+                # Per partial, le spese reali non hanno stati parziali
+                unplanned_expenses = unplanned_expenses.none()
+
         # Serializza le spese non pianificate
         from apps.expenses.api.serializers import ExpenseSerializer
         unplanned_serializer = ExpenseSerializer(unplanned_expenses, many=True)
 
         return Response({
-            'plan': plan_serializer.data,
-            'unplanned_expenses': unplanned_serializer.data
+            'plan': plan_response,
+            'unplanned_expenses': unplanned_serializer.data,
+            'applied_filter': status_filter
         })
 
     @action(detail=False, methods=['get'])

@@ -1,5 +1,5 @@
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.response import Response
 from rest_framework import status
@@ -11,7 +11,7 @@ from ..models import AppVersion
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def check_update(request):
     """Controlla se ci sono aggiornamenti disponibili"""
     
@@ -21,7 +21,7 @@ def check_update(request):
     except (ValueError, TypeError):
         current_version = 0
     
-    latest_version = AppVersion.get_latest_version()
+    latest_version = AppVersion.objects.using('updates_db').first()
     
     if not latest_version:
         return Response({
@@ -47,12 +47,14 @@ def check_update(request):
     return Response(response_data)
 
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
 @csrf_exempt
 def download_apk(request, version_code):
     """Download dell'APK per una specifica versione"""
     
     try:
-        app_version = AppVersion.objects.get(version_code=version_code)
+        app_version = AppVersion.objects.using('updates_db').get(version_code=version_code)
     except AppVersion.DoesNotExist:
         raise Http404("Versione non trovata")
     
@@ -74,11 +76,13 @@ def download_apk(request, version_code):
     return response
 
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
 @csrf_exempt
 def download_latest_apk(request):
     """Download dell'APK dell'ultima versione disponibile"""
 
-    latest_version = AppVersion.objects.order_by('-version_code').first()
+    latest_version = AppVersion.objects.using('updates_db').order_by('-version_code').first()
 
     if not latest_version:
         raise Http404("Nessuna versione disponibile")
@@ -106,7 +110,7 @@ def download_latest_apk(request):
 def app_info(request):
     """Informazioni generali sull'app"""
     
-    latest_version = AppVersion.get_latest_version()
+    latest_version = AppVersion.objects.using('updates_db').first()
     
     return Response({
         'app_name': 'My Crazy Family',
