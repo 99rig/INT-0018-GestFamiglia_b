@@ -263,11 +263,14 @@ class FamilyInvitationViewSet(viewsets.ModelViewSet):
         })
 
 
-@method_decorator(csrf_exempt, name='dispatch')
 class PasswordResetRequestView(generics.GenericAPIView):
     """Vista per richiedere il reset della password via email"""
     serializer_class = PasswordResetRequestSerializer
     permission_classes = [AllowAny]
+
+    @method_decorator(csrf_exempt)
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
@@ -336,11 +339,14 @@ Il team di My Crazy Family
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-@method_decorator(csrf_exempt, name='dispatch')
 class PasswordResetConfirmView(generics.GenericAPIView):
     """Vista per confermare il reset della password con token"""
     serializer_class = PasswordResetConfirmSerializer
     permission_classes = [AllowAny]
+
+    @method_decorator(csrf_exempt)
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
