@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Contribution, ExpenseContribution, FamilyBalance
+from apps.contributions.models import Contribution, ExpenseContribution, FamilyBalance
 from apps.users.api.serializers import UserProfileSerializer
 
 User = get_user_model()

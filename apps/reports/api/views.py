@@ -1296,7 +1296,7 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
         status_filter = request.query_params.get('status', 'all')
 
         # Ottieni QuerySet delle spese pianificate del piano
-        from .models import PlannedExpense
+        from apps.reports.models import PlannedExpense
         planned_expenses_qs = PlannedExpense.objects.filter(
             spending_plan=plan
         ).select_related(

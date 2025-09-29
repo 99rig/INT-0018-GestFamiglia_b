@@ -25,7 +25,7 @@ urlpatterns = [
     path('api/', include('apps.categories.api.urls')),
     path('api/', include('apps.expenses.api.urls')),
     path('api/', include('apps.reports.api.urls')),
-    path('api/', include('apps.contributions.urls')),
+    path('api/', include('apps.contributions.api.urls')),
     path('api/updates/', include('apps.updates.api.urls')),
     path('api-auth/', include('rest_framework.urls')),
 ]
