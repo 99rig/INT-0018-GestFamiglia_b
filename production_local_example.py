@@ -16,7 +16,7 @@ DATABASES = {
 }
 
 # Hosts permessi (aggiungere www se necessario)
-ALLOWED_HOSTS = ['lacrazyfamily.com', 'www.lacrazyfamily.com']
+ALLOWED_HOSTS = ['mycrisisfamily.com', 'www.mycrisisfamily.com']
 
 # Chiave segreta di produzione (diversa da quella di sviluppo)
 SECRET_KEY = "xer6@ah_uju$qa7*!ypzc610ufrq-9vr7snn%5x#w_^fhf2-dw"
@@ -25,12 +25,12 @@ SECRET_KEY = "xer6@ah_uju$qa7*!ypzc610ufrq-9vr7snn%5x#w_^fhf2-dw"
 # Le configurazioni email SMTP sono nel base.py e devono rimanere attive
 
 # Frontend URL per produzione (opzionale, già in base.py)
-FRONTEND_URL = 'https://lacrazyfamily.com/app'
+FRONTEND_URL = 'https://mycrisisfamily.com/app'
 
 # Configurazioni CORS per produzione
 CORS_ALLOWED_ORIGINS = [
-    "https://lacrazyfamily.com",
-    "https://www.lacrazyfamily.com",
+    "https://mycrisisfamily.com",
+    "https://www.mycrisisfamily.com",
 ]
 
 CORS_ALLOW_CREDENTIALS = True

@@ -53,7 +53,7 @@ My Crazy Family è un'applicazione per la gestione condivisa delle spese familia
 
 Per accettare l'invito e completare la registrazione:
 
-1. Visita il sito: https://lacrazyfamily.com/
+1. Visita il sito: https://mycrisisfamily.com/
 2. Completa la registrazione con questo indirizzo email
 3. Accedi alle Impostazioni del tuo profilo
 4. Seleziona "Unisciti con Codice"
@@ -91,7 +91,7 @@ Questo è un messaggio automatico, si prega di non rispondere a questa email.
 
 Avendo già un account registrato, puoi accettare immediatamente l'invito seguendo questi semplici passaggi:
 
-1. Accedi alla tua applicazione: https://lacrazyfamily.com/
+1. Accedi alla tua applicazione: https://mycrisisfamily.com/
 2. Naviga nel menu "Impostazioni"
 3. Seleziona "Unisciti con Codice"
 4. Inserisci il codice di invito: {invitation.token}

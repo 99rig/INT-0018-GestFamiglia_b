@@ -26,7 +26,7 @@ ALLOWED_HOSTS = [
     '127.0.0.1',
     'localhost',
     '192.168.1.125',
-    'lacrazyfamily.com'
+    'mycrisisfamily.com'
 ]
 
 
@@ -177,7 +177,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:9001",  # Quasar dev
     "http://192.168.1.125:9000",  # Quasar da rete locale
     "http://192.168.1.125:8000",  # Django API da rete locale
-    "https://lacrazyfamily.com",  # Produzione
+    "https://mycrisisfamily.com",  # Produzione
     "capacitor://localhost",  # Capacitor Android
     "https://localhost",  # Capacitor iOS
 ]
@@ -223,12 +223,12 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'  # For production
 EMAIL_HOST = 'smtp.zoho.com'  # Server globale invece di .eu
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'serra.marco@lacrazyfamily.com'  # Account principale Zoho
+EMAIL_HOST_USER = 'serra.marco@mycrisisfamily.com'  # Account principale Zoho
 EMAIL_HOST_PASSWORD = 'Mumble100%'  # Password Zoho
 
 # Default email settings
-DEFAULT_FROM_EMAIL = 'My Crazy Family <no-reply@lacrazyfamily.com>'
+DEFAULT_FROM_EMAIL = 'My Crazy Family <no-reply@mycrisisfamily.com>'
 EMAIL_SUBJECT_PREFIX = '[My Crazy Family] '
 
 # Frontend URL settings
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://lacrazyfamily.com/app')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://mycrisisfamily.com/app')
