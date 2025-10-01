@@ -26,7 +26,8 @@ ALLOWED_HOSTS = [
     '127.0.0.1',
     'localhost',
     '192.168.1.125',
-    'mycrisisfamily.com'
+    'mycrisisfamily.com',
+    'www.mycrisisfamily.com'
 ]
 
 
@@ -178,6 +179,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://192.168.1.125:9000",  # Quasar da rete locale
     "http://192.168.1.125:8000",  # Django API da rete locale
     "https://mycrisisfamily.com",  # Produzione
+    "https://www.mycrisisfamily.com",  # Produzione con www
     "capacitor://localhost",  # Capacitor Android
     "https://localhost",  # Capacitor iOS
 ]
