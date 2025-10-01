@@ -23,7 +23,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
     filterset_fields = ['type', 'is_active']
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'type', 'created_at']
-    ordering = ['type', 'name']
+    ordering = ['name']
     
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:

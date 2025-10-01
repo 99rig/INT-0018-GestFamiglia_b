@@ -147,11 +147,14 @@ class SpendingPlan(models.Model):
         return planned_paid + unplanned_completed
 
     def get_completed_count(self):
-        """Calcola il numero di spese completate (pianificate + non pianificate)"""
+        """Calcola il numero di spese completate/pagate (pianificate + non pianificate)"""
         from apps.expenses.models import Expense
 
-        # Spese pianificate completate
-        planned_count = self.planned_expenses.filter(is_completed=True).count()
+        # Spese pianificate con payment_status='completed' (100% pagate)
+        planned_count = 0
+        for expense in self.planned_expenses.all():
+            if expense.get_payment_status() == 'completed':
+                planned_count += 1
 
         # Spese non pianificate pagate
         unplanned_count = Expense.objects.filter(
