@@ -82,6 +82,11 @@ class SpendingPlan(models.Model):
         verbose_name="Nascosto",
         help_text="Se True, il piano non viene mostrato nelle liste principali"
     )
+    is_pinned = models.BooleanField(
+        default=False,
+        verbose_name="Pinnati",
+        help_text="Se True, il piano viene mostrato in cima e in evidenza"
+    )
     auto_generated = models.BooleanField(
         default=False,
         verbose_name="Generato automaticamente",
@@ -93,7 +98,7 @@ class SpendingPlan(models.Model):
     class Meta:
         verbose_name = "Piano Spese"
         verbose_name_plural = "Piani Spese"
-        ordering = ['-start_date', '-created_at']
+        ordering = ['-is_pinned', '-start_date', '-created_at']
 
     def __str__(self):
         scope_icon = "👥" if self.plan_scope == 'family' else "👤"

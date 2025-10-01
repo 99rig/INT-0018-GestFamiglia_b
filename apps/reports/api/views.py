@@ -1416,3 +1416,17 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
             'total_spent_amount': str(total_spent),
             'average_completion': round(average_completion, 2)
         })
+
+    @action(detail=True, methods=['post'])
+    def toggle_pin(self, request, pk=None):
+        """Toggle lo stato pinnato di un piano di spesa"""
+        plan = self.get_object()
+        plan.is_pinned = not plan.is_pinned
+        plan.save()
+
+        serializer = self.get_serializer(plan)
+        return Response({
+            'detail': f'Piano {"pinnato" if plan.is_pinned else "spinnato"} con successo.',
+            'is_pinned': plan.is_pinned,
+            'plan': serializer.data
+        })
