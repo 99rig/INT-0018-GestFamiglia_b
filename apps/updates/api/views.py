@@ -70,7 +70,7 @@ def download_apk(request, version_code):
         open(apk_path, 'rb'),
         content_type='application/vnd.android.package-archive',
         as_attachment=True,
-        filename=f'MyCrazyFamily-v{app_version.version_name}.apk'
+        filename=f'MyCrisisFamily-v{app_version.version_name}.apk'
     )
     
     return response
@@ -99,7 +99,7 @@ def download_latest_apk(request):
         open(apk_path, 'rb'),
         content_type='application/vnd.android.package-archive',
         as_attachment=True,
-        filename=f'MyCrazyFamily-v{latest_version.version_name}.apk'
+        filename=f'MyCrisisFamily-v{latest_version.version_name}.apk'
     )
 
     return response
@@ -113,7 +113,7 @@ def app_info(request):
     latest_version = AppVersion.objects.using('updates_db').first()
     
     return Response({
-        'app_name': 'My Crazy Family',
+        'app_name': 'MyCrisisFamily',
         'latest_version': {
             'version_name': latest_version.version_name,
             'version_code': latest_version.version_code,
