@@ -64,14 +64,18 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     def my_expenses(self, request):
         """Restituisce solo le spese create dall'utente stesso"""
         user = request.user
-        expenses = Expense.objects.filter(user=user)
+        expenses = Expense.objects.filter(user=user).select_related(
+            'user', 'category', 'subcategory', 'spending_plan'
+        ).prefetch_related('shared_with', 'attachments', 'quote')
         serializer = ExpenseSerializer(expenses, many=True)
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
     def shared_expenses(self, request):
         """Restituisce le spese condivise con l'utente"""
-        expenses = Expense.objects.filter(shared_with=request.user)
+        expenses = Expense.objects.filter(shared_with=request.user).select_related(
+            'user', 'category', 'subcategory', 'spending_plan'
+        ).prefetch_related('shared_with', 'attachments', 'quote')
         serializer = ExpenseSerializer(expenses, many=True)
         return Response(serializer.data)
     
@@ -127,34 +131,43 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def yearly_summary(self, request):
         """Restituisce un riepilogo annuale delle spese"""
+        from django.db.models.functions import ExtractMonth
+
         year = request.query_params.get('year', datetime.today().year)
-        
+
         expenses = self.get_queryset().filter(
             date__year=year,
             status='pagata'
         )
-        
-        # Totale per mese
+
+        # Totale per mese - query singola ottimizzata
+        by_month_data = expenses.annotate(
+            month=ExtractMonth('date')
+        ).values('month').annotate(
+            total=Sum('amount'),
+            count=Count('id')
+        ).order_by('month')
+
+        # Crea dizionario per accesso rapido
+        month_dict = {item['month']: item for item in by_month_data}
+
+        # Costruisci array con tutti i 12 mesi
         by_month = []
         for month in range(1, 13):
-            month_expenses = expenses.filter(date__month=month)
-            month_stats = month_expenses.aggregate(
-                total=Sum('amount'),
-                count=Count('id')
-            )
+            month_data = month_dict.get(month, {'total': 0, 'count': 0})
             by_month.append({
                 'month': month,
-                'total': str(month_stats['total'] or 0),
-                'count': month_stats['count']
+                'total': str(month_data['total'] or 0),
+                'count': month_data['count']
             })
-        
+
         # Statistiche generali
         stats = expenses.aggregate(
             total=Sum('amount'),
             count=Count('id'),
             average=Avg('amount')
         )
-        
+
         return Response({
             'year': year,
             'statistics': {
@@ -600,7 +613,9 @@ class RecurringExpenseViewSet(viewsets.ModelViewSet):
         user = self.request.user
         return RecurringExpense.objects.filter(
             Q(user=user) | Q(shared_with=user)
-        ).distinct()
+        ).distinct().select_related(
+            'user', 'category', 'subcategory'
+        ).prefetch_related('shared_with')
     
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
@@ -724,7 +739,9 @@ class ExpenseQuotaViewSet(viewsets.ModelViewSet):
         user = self.request.user
         return ExpenseQuota.objects.filter(
             Q(expense__user=user) | Q(expense__shared_with=user)
-        ).distinct()
+        ).distinct().select_related(
+            'expense', 'expense__user', 'expense__category', 'expense__subcategory'
+        ).prefetch_related('expense__shared_with')
     
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
