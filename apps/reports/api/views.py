@@ -1046,6 +1046,9 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
         # Filtra piani nascosti
         queryset = base_queryset.filter(is_hidden=False)
 
+        # Ordina: piani pinnati per primi, poi per data di inizio (più recenti prima)
+        queryset = queryset.order_by('-is_pinned_by_user', '-start_date')
+
         # Serializza i risultati
         serializer = self.get_serializer(queryset, many=True)
 
