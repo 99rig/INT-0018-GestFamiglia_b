@@ -621,6 +621,7 @@ class SpendingPlanListSerializer(serializers.ModelSerializer):
 
     # Campi essenziali del piano
     is_current = serializers.SerializerMethodField()
+    is_shared = serializers.SerializerMethodField()
 
     # Pin personalizzato per l'utente (dal queryset annotato)
     is_pinned_by_user = serializers.BooleanField(read_only=True)
@@ -636,7 +637,7 @@ class SpendingPlanListSerializer(serializers.ModelSerializer):
             'total_estimated_amount', 'total_expenses_count', 'completion_percentage',
             'pending_expenses_amount',
             'user_ids', 'created_by_name', 'is_active', 'is_hidden',
-            'is_pinned', 'is_pinned_by_user', 'auto_generated', 'is_current',
+            'is_pinned', 'is_pinned_by_user', 'auto_generated', 'is_current', 'is_shared',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
@@ -685,6 +686,10 @@ class SpendingPlanListSerializer(serializers.ModelSerializer):
         from django.utils import timezone
         today = timezone.now().date()
         return obj.start_date <= today <= obj.end_date
+
+    def get_is_shared(self, obj):
+        """Verifica se il piano è condiviso (familiare)"""
+        return obj.plan_scope == 'family'
 
 
 class SpendingPlanCreateUpdateSerializer(serializers.ModelSerializer):
