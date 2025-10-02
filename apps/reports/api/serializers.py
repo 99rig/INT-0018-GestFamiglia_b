@@ -606,9 +606,12 @@ class SpendingPlanListSerializer(serializers.ModelSerializer):
         max_digits=10, decimal_places=2, read_only=True, coerce_to_string=True
     )
     planned_expenses_count = serializers.IntegerField(read_only=True)
+    unplanned_expenses_count = serializers.IntegerField(read_only=True)
+    completed_count = serializers.IntegerField(read_only=True)
 
     # Calcoli semplici senza query
     total_estimated_amount = serializers.SerializerMethodField()
+    total_expenses_count = serializers.SerializerMethodField()
     completion_percentage = serializers.SerializerMethodField()
     pending_expenses_amount = serializers.SerializerMethodField()
 
@@ -629,7 +632,8 @@ class SpendingPlanListSerializer(serializers.ModelSerializer):
             'start_date', 'end_date', 'total_budget',
             'total_planned_amount', 'completed_expenses_amount',
             'unplanned_expenses_amount', 'planned_expenses_count',
-            'total_estimated_amount', 'completion_percentage',
+            'unplanned_expenses_count', 'completed_count',
+            'total_estimated_amount', 'total_expenses_count', 'completion_percentage',
             'pending_expenses_amount',
             'user_ids', 'created_by_name', 'is_active', 'is_hidden',
             'is_pinned', 'is_pinned_by_user', 'auto_generated', 'is_current',
@@ -638,7 +642,8 @@ class SpendingPlanListSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'created_at', 'updated_at',
             'total_planned_amount', 'completed_expenses_amount',
-            'unplanned_expenses_amount', 'planned_expenses_count'
+            'unplanned_expenses_amount', 'planned_expenses_count',
+            'unplanned_expenses_count', 'completed_count'
         ]
 
     def get_total_estimated_amount(self, obj):
@@ -647,6 +652,12 @@ class SpendingPlanListSerializer(serializers.ModelSerializer):
         planned = obj.total_planned_amount or Decimal('0.00')
         unplanned = obj.unplanned_expenses_amount or Decimal('0.00')
         return str(planned + unplanned)
+
+    def get_total_expenses_count(self, obj):
+        """Calcola totale spese da valori annotati"""
+        planned = getattr(obj, 'planned_expenses_count', 0) or 0
+        unplanned = getattr(obj, 'unplanned_expenses_count', 0) or 0
+        return planned + unplanned
 
     def get_pending_expenses_amount(self, obj):
         """Calcola importo rimanente da valori annotati"""

@@ -931,11 +931,9 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Restituisce i piani di spesa visibili all'utente (personali + famiglia)"""
         user = self.request.user
-        from django.db.models import Q, Sum, Count, Exists, OuterRef
+        from django.db.models import Q
         from django.utils import timezone
         from dateutil.relativedelta import relativedelta
-        from decimal import Decimal
-        from apps.reports.models import UserSpendingPlanPreference
 
         # Piani personali (creati dall'utente e non condivisi)
         personal_plans = Q(created_by=user, plan_scope='personal')
@@ -946,38 +944,15 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
             family_users = user.family.members.all()
             family_plans = Q(users__in=family_users, plan_scope='family')
 
-        # Query base con annotazioni per performance
+        # Query base
         queryset = SpendingPlan.objects.filter(
             personal_plans | family_plans
         ).select_related(
             'created_by'
         ).prefetch_related(
-            'users'
-        ).annotate(
-            # Calcoli aggregati nel database (evita N+1 query)
-            total_planned_amount=Sum('planned_expenses__amount'),
-            planned_expenses_count=Count('planned_expenses', distinct=True),
-
-            # Spese completate (pagamenti effettuati da planned_expenses)
-            completed_expenses_amount=Sum(
-                'planned_expenses__actual_payments__amount',
-                filter=Q(planned_expenses__actual_payments__status__in=['pagata', 'parzialmente_pagata'])
-            ),
-
-            # Spese non pianificate del piano (collegate direttamente al piano)
-            unplanned_expenses_amount=Sum(
-                'actual_expenses__amount',
-                filter=Q(actual_expenses__planned_expense__isnull=True, actual_expenses__status__in=['pagata', 'parzialmente_pagata'])
-            ),
-
-            # Pin personalizzato per l'utente corrente (usando Exists subquery)
-            is_pinned_by_user=Exists(
-                UserSpendingPlanPreference.objects.filter(
-                    user=user,
-                    spending_plan=OuterRef('pk'),
-                    is_pinned=True
-                )
-            )
+            'users',
+            'planned_expenses__category',
+            'planned_expenses__subcategory'
         ).distinct()
 
         # Applica filtro temporale se non richiesto "show_all"
@@ -992,21 +967,23 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
 
     def list(self, request, *args, **kwargs):
         """Override list per aggiungere il conteggio totale ed evitare doppia chiamata API"""
-        from django.db.models import Q, Sum, Count, Exists, OuterRef
+        from django.db.models import Q, Sum, Count, Case, When, Value, DecimalField, Exists, OuterRef, BooleanField
         from django.utils import timezone
         from dateutil.relativedelta import relativedelta
         from apps.reports.models import UserSpendingPlanPreference
+        from decimal import Decimal
 
         user = request.user
         show_all = request.query_params.get('show_all', 'false').lower() == 'true'
 
-        # Base queryset con annotazioni (STESSO LOGIC di get_queryset)
+        # Base queryset (stesso logic di get_queryset)
         personal_plans = Q(created_by=user, plan_scope='personal')
         family_plans = Q()
         if user.family:
             family_users = user.family.members.all()
             family_plans = Q(users__in=family_users, plan_scope='family')
 
+        # Annotazioni per evitare N+1 query
         base_queryset = SpendingPlan.objects.filter(
             personal_plans | family_plans
         ).select_related(
@@ -1014,22 +991,44 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
         ).prefetch_related(
             'users'
         ).annotate(
-            # IMPORTANTE: Stesse annotazioni di get_queryset!
-            total_planned_amount=Sum('planned_expenses__amount'),
+            # Somma importi pianificati
+            total_planned_amount=Sum('planned_expenses__amount', default=Decimal('0.00')),
+            # Conta spese pianificate
             planned_expenses_count=Count('planned_expenses', distinct=True),
+            # Conta spese non pianificate
+            unplanned_expenses_count=Count(
+                'actual_expenses',
+                filter=Q(actual_expenses__status__in=['pagata', 'parzialmente_pagata']),
+                distinct=True
+            ),
+            # Somma spese non pianificate (actual_expenses è il related_name corretto)
+            unplanned_expenses_amount=Sum(
+                Case(
+                    When(
+                        Q(actual_expenses__status__in=['pagata', 'parzialmente_pagata']),
+                        then='actual_expenses__amount'
+                    ),
+                    default=Value(0),
+                    output_field=DecimalField(max_digits=10, decimal_places=2)
+                ),
+                default=Decimal('0.00')
+            ),
+            # Importo spese completate (planned expenses pagate)
             completed_expenses_amount=Sum(
                 'planned_expenses__actual_payments__amount',
-                filter=Q(planned_expenses__actual_payments__status__in=['pagata', 'parzialmente_pagata'])
+                default=Decimal('0.00')
             ),
-            unplanned_expenses_amount=Sum(
-                'actual_expenses__amount',
-                filter=Q(actual_expenses__planned_expense__isnull=True, actual_expenses__status__in=['pagata', 'parzialmente_pagata'])
+            # Conta spese completate
+            completed_count=Count(
+                'planned_expenses',
+                filter=Q(planned_expenses__actual_payments__isnull=False),
+                distinct=True
             ),
-            # Pin personalizzato per l'utente corrente
+            # Pin personalizzato dell'utente
             is_pinned_by_user=Exists(
                 UserSpendingPlanPreference.objects.filter(
-                    user=user,
                     spending_plan=OuterRef('pk'),
+                    user=user,
                     is_pinned=True
                 )
             )
@@ -1047,12 +1046,8 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
         # Filtra piani nascosti
         queryset = base_queryset.filter(is_hidden=False)
 
-        # Ordina: prima i piani pinnati dall'utente, poi per data
-        queryset = queryset.order_by('-is_pinned_by_user', '-start_date', '-created_at')
-
-        # Serializza i risultati (usa SpendingPlanListSerializer automaticamente)
-        from .serializers import SpendingPlanListSerializer
-        serializer = SpendingPlanListSerializer(queryset, many=True)
+        # Serializza i risultati
+        serializer = self.get_serializer(queryset, many=True)
 
         # Aggiungi metadati nella risposta
         response_data = {
@@ -1068,7 +1063,6 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
         if self.action in ['create', 'update', 'partial_update']:
             return SpendingPlanCreateUpdateSerializer
         elif self.action == 'list':
-            # Usa serializer leggero per la lista (performance)
             from .serializers import SpendingPlanListSerializer
             return SpendingPlanListSerializer
         return SpendingPlanSerializer
@@ -1471,39 +1465,14 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def toggle_pin(self, request, pk=None):
-        """Toggle lo stato pinnato di un piano di spesa per l'utente corrente"""
-        from apps.reports.models import UserSpendingPlanPreference
-
+        """Toggle lo stato pinnato di un piano di spesa"""
         plan = self.get_object()
-        user = request.user
+        plan.is_pinned = not plan.is_pinned
+        plan.save()
 
-        # Recupera o crea la preferenza dell'utente per questo piano
-        preference, created = UserSpendingPlanPreference.objects.get_or_create(
-            user=user,
-            spending_plan=plan,
-            defaults={'is_pinned': True}
-        )
-
-        # Se esisteva già, fai toggle del pin
-        if not created:
-            preference.is_pinned = not preference.is_pinned
-            preference.save()
-
-        # Ricarica il piano con l'annotazione is_pinned_by_user aggiornata
-        from django.db.models import Exists, OuterRef
-        updated_plan = SpendingPlan.objects.filter(pk=plan.pk).annotate(
-            is_pinned_by_user=Exists(
-                UserSpendingPlanPreference.objects.filter(
-                    user=user,
-                    spending_plan=OuterRef('pk'),
-                    is_pinned=True
-                )
-            )
-        ).first()
-
+        serializer = self.get_serializer(plan)
         return Response({
-            'detail': f'Piano {"pinnato" if preference.is_pinned else "spinnato"} con successo.',
-            'is_pinned_by_user': preference.is_pinned,
-            'plan_id': plan.id,
-            'plan_name': plan.name
+            'detail': f'Piano {"pinnato" if plan.is_pinned else "spinnato"} con successo.',
+            'is_pinned': plan.is_pinned,
+            'plan': serializer.data
         })
