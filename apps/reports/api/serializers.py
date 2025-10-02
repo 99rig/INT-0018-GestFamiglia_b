@@ -41,16 +41,18 @@ class PlannedExpenseSerializer(serializers.ModelSerializer):
     is_partially_paid = serializers.SerializerMethodField()
     actual_payments_count = serializers.SerializerMethodField()
     paid_by_users = serializers.SerializerMethodField()
+    my_share = serializers.SerializerMethodField()
+    other_share = serializers.SerializerMethodField()
 
     class Meta:
         model = PlannedExpense
         fields = [
             'id', 'spending_plan', 'description', 'amount', 'category', 'category_detail',
             'subcategory', 'subcategory_detail', 'priority', 'due_date',
-            'notes', 'is_completed', 'is_hidden', 'created_at', 'updated_at',
+            'notes', 'is_completed', 'is_hidden', 'payment_type', 'my_share_amount', 'paid_by_user', 'created_at', 'updated_at',
             'total_paid', 'remaining_amount', 'completion_percentage',
             'payment_status', 'is_fully_paid', 'is_partially_paid',
-            'actual_payments_count', 'paid_by_users',
+            'actual_payments_count', 'paid_by_users', 'my_share', 'other_share',
             # Campi ricorrenza
             'is_recurring', 'total_installments', 'installment_number',
             'parent_recurring_id', 'recurring_frequency'
@@ -58,7 +60,7 @@ class PlannedExpenseSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'created_at', 'updated_at', 'total_paid', 'remaining_amount',
             'completion_percentage', 'payment_status', 'is_fully_paid',
-            'is_partially_paid', 'actual_payments_count', 'paid_by_users'
+            'is_partially_paid', 'actual_payments_count', 'paid_by_users', 'my_share', 'other_share'
         ]
 
     def get_total_paid(self, obj):
@@ -108,6 +110,14 @@ class PlannedExpenseSerializer(serializers.ModelSerializer):
 
         return users
 
+    def get_my_share(self, obj):
+        """Calcola la quota da pagare"""
+        return str(obj.get_my_share())
+
+    def get_other_share(self, obj):
+        """Calcola la quota dell'altra persona"""
+        return str(obj.get_other_share())
+
 
 class PlannedExpenseLightSerializer(serializers.ModelSerializer):
     """Serializer leggero per le spese pianificate con campi essenziali per il frontend"""
@@ -127,16 +137,18 @@ class PlannedExpenseLightSerializer(serializers.ModelSerializer):
     # Informazioni sulle rate ricorrenti collegate
     recurring_installments_status = serializers.SerializerMethodField()
     recurring_installments_summary = serializers.SerializerMethodField()
+    my_share = serializers.SerializerMethodField()
+    other_share = serializers.SerializerMethodField()
 
     class Meta:
         model = PlannedExpense
         fields = [
             'id', 'spending_plan', 'description', 'amount', 'category', 'category_detail',
             'subcategory', 'subcategory_detail', 'priority', 'due_date',
-            'notes', 'is_completed', 'is_hidden', 'created_at', 'updated_at',
+            'notes', 'is_completed', 'is_hidden', 'payment_type', 'my_share_amount', 'paid_by_user', 'created_at', 'updated_at',
             'total_paid', 'remaining_amount', 'completion_percentage',
             'payment_status', 'is_fully_paid', 'is_partially_paid',
-            'actual_payments_count', 'paid_by_users',
+            'actual_payments_count', 'paid_by_users', 'my_share', 'other_share',
             # Campi ricorrenza
             'is_recurring', 'total_installments', 'installment_number',
             'parent_recurring_id', 'recurring_frequency',
@@ -146,7 +158,7 @@ class PlannedExpenseLightSerializer(serializers.ModelSerializer):
             'id', 'created_at', 'updated_at', 'total_paid', 'remaining_amount',
             'completion_percentage', 'payment_status', 'is_fully_paid',
             'is_partially_paid', 'actual_payments_count', 'paid_by_users', 'recurring_installments_status',
-            'recurring_installments_summary'
+            'recurring_installments_summary', 'my_share', 'other_share'
         ]
 
     def get_total_paid(self, obj):
@@ -255,6 +267,14 @@ class PlannedExpenseLightSerializer(serializers.ModelSerializer):
 
         return users
 
+    def get_my_share(self, obj):
+        """Calcola la quota da pagare"""
+        return str(obj.get_my_share())
+
+    def get_other_share(self, obj):
+        """Calcola la quota dell'altra persona"""
+        return str(obj.get_other_share())
+
 
 class PlannedExpenseCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer per creare/aggiornare spese pianificate"""
@@ -263,7 +283,7 @@ class PlannedExpenseCreateUpdateSerializer(serializers.ModelSerializer):
         model = PlannedExpense
         fields = [
             'spending_plan', 'description', 'amount', 'category', 'subcategory',
-            'priority', 'due_date', 'notes',
+            'priority', 'due_date', 'notes', 'payment_type', 'my_share_amount', 'paid_by_user',
             # Campi ricorrenza
             'is_recurring', 'total_installments', 'installment_number',
             'parent_recurring_id', 'recurring_frequency'

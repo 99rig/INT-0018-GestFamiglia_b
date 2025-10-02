@@ -24,7 +24,13 @@ class Expense(models.Model):
         ('personal', 'Fondi Personali'),
         ('contribution', 'Da Contributo Famiglia'),
     ]
-    
+
+    PAYMENT_TYPE_CHOICES = [
+        ('shared', 'Condivisa'),
+        ('partial', 'Parziale'),
+        ('individual', 'Individuale'),
+    ]
+
     STATUS_CHOICES = [
         ('pianificata', 'Pianificata'),
         ('da_pagare', 'Da Pagare'),
@@ -134,6 +140,30 @@ class Expense(models.Model):
         verbose_name="Fonte del Pagamento",
         help_text="Indica se il pagamento viene da fondi personali o dal contributo famiglia"
     )
+    payment_type = models.CharField(
+        max_length=20,
+        choices=PAYMENT_TYPE_CHOICES,
+        default='shared',
+        verbose_name="Tipo Pagamento",
+        help_text="Indica se la spesa è condivisa, parziale o individuale"
+    )
+    my_share_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Mia Quota",
+        help_text="Importo effettivamente pagato da me (solo per spese parziali)"
+    )
+    paid_by_user = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='individual_expenses_paid',
+        verbose_name="Pagata da",
+        help_text="Utente che paga la spesa (solo per spese individuali)"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -225,6 +255,27 @@ class Expense(models.Model):
             is_paid=False,
             due_date__lt=timezone.now().date()
         ).order_by('due_date')
+
+    def get_my_share(self):
+        """Calcola la quota da pagare in base al payment_type"""
+        if self.payment_type == 'individual':
+            # Spesa individuale: pago tutto
+            return self.amount
+        elif self.payment_type == 'partial':
+            # Spesa parziale: uso my_share_amount se valorizzato, altrimenti metà
+            if self.my_share_amount is not None:
+                return self.my_share_amount
+            return self.amount / 2
+        else:
+            # Spesa condivisa: nessuna quota specifica
+            return Decimal('0.00')
+
+    def get_other_share(self):
+        """Calcola la quota dell'altra persona"""
+        if self.payment_type == 'partial':
+            my_share = self.get_my_share()
+            return self.amount - my_share
+        return Decimal('0.00')
 
 
 class RecurringExpense(models.Model):

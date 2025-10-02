@@ -97,23 +97,25 @@ class ExpenseSerializer(serializers.ModelSerializer):
     paid_quote_count = serializers.SerializerMethodField()
     total_quote_count = serializers.SerializerMethodField()
     next_due_quota = serializers.SerializerMethodField()
+    my_share = serializers.SerializerMethodField()
+    other_share = serializers.SerializerMethodField()
 
     class Meta:
         model = Expense
         fields = [
             'id', 'user', 'category', 'category_detail', 'subcategory',
             'subcategory_detail', 'amount', 'description', 'notes', 'date',
-            'payment_method', 'payment_source', 'status', 'receipt', 'shared_with',
+            'payment_method', 'payment_source', 'payment_type', 'my_share_amount', 'paid_by_user', 'status', 'receipt', 'shared_with',
             'shared_with_details', 'is_recurring', 'budget', 'budget_detail',
             'spending_plan', 'attachments', 'quote', 'split_amount', 'has_quote', 'total_paid_amount',
             'remaining_amount', 'payment_progress_percentage', 'paid_quote_count',
-            'total_quote_count', 'next_due_quota', 'created_at', 'updated_at'
+            'total_quote_count', 'next_due_quota', 'my_share', 'other_share', 'created_at', 'updated_at'
         ]
         read_only_fields = [
             'id', 'user', 'created_at', 'updated_at', 'spending_plan', 'split_amount',
             'has_quote', 'total_paid_amount', 'remaining_amount',
             'payment_progress_percentage', 'paid_quote_count', 'total_quote_count',
-            'next_due_quota'
+            'next_due_quota', 'my_share', 'other_share'
         ]
     
     def get_split_amount(self, obj):
@@ -157,6 +159,14 @@ class ExpenseSerializer(serializers.ModelSerializer):
             return BudgetSerializer(obj.budget).data
         return None
 
+    def get_my_share(self, obj):
+        """Calcola la quota da pagare"""
+        return str(obj.get_my_share())
+
+    def get_other_share(self, obj):
+        """Calcola la quota dell'altra persona"""
+        return str(obj.get_other_share())
+
 
 class ExpenseCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer per creare/aggiornare spese"""
@@ -176,7 +186,7 @@ class ExpenseCreateUpdateSerializer(serializers.ModelSerializer):
         model = Expense
         fields = [
             'category', 'subcategory', 'amount', 'description', 'notes',
-            'date', 'payment_method', 'payment_source', 'status', 'receipt', 'shared_with',
+            'date', 'payment_method', 'payment_source', 'payment_type', 'my_share_amount', 'paid_by_user', 'status', 'receipt', 'shared_with',
             'is_recurring', 'budget', 'spending_plan'
         ]
 
