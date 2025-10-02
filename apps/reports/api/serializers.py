@@ -476,13 +476,14 @@ class SpendingPlanSerializer(serializers.ModelSerializer):
     pending_expenses_amount = serializers.SerializerMethodField()
     completion_percentage = serializers.SerializerMethodField()
     is_current = serializers.SerializerMethodField()
+    is_pinned_by_user = serializers.BooleanField(read_only=True, required=False)
 
     class Meta:
         model = SpendingPlan
         fields = [
             'id', 'name', 'description', 'plan_type', 'plan_scope', 'start_date', 'end_date', 'total_budget',
             'users', 'users_detail', 'is_shared', 'created_by', 'created_by_detail',
-            'is_active', 'is_hidden', 'is_pinned', 'auto_generated', 'planned_expenses',
+            'is_active', 'is_hidden', 'is_pinned', 'is_pinned_by_user', 'auto_generated', 'planned_expenses',
             'total_planned_amount', 'total_unplanned_expenses_amount', 'total_estimated_amount',
             'completed_expenses_amount', 'completed_count', 'total_expenses_count',
             'pending_expenses_amount', 'completion_percentage', 'is_current',

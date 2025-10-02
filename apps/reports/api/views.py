@@ -1465,14 +1465,29 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def toggle_pin(self, request, pk=None):
-        """Toggle lo stato pinnato di un piano di spesa"""
+        """Toggle lo stato pinnato di un piano di spesa per l'utente corrente"""
+        from apps.reports.models import UserSpendingPlanPreference
+
         plan = self.get_object()
-        plan.is_pinned = not plan.is_pinned
-        plan.save()
+        user = request.user
+
+        # Ottieni o crea la preferenza dell'utente per questo piano
+        preference, created = UserSpendingPlanPreference.objects.get_or_create(
+            user=user,
+            spending_plan=plan,
+            defaults={'is_pinned': False}
+        )
+
+        # Toggle del pin
+        preference.is_pinned = not preference.is_pinned
+        preference.save()
+
+        # Aggiungi l'attributo is_pinned_by_user al piano per il serializer
+        plan.is_pinned_by_user = preference.is_pinned
 
         serializer = self.get_serializer(plan)
         return Response({
-            'detail': f'Piano {"pinnato" if plan.is_pinned else "spinnato"} con successo.',
-            'is_pinned': plan.is_pinned,
+            'detail': f'Piano {"pinnato" if preference.is_pinned else "spinnato"} con successo.',
+            'is_pinned_by_user': preference.is_pinned,
             'plan': serializer.data
         })
