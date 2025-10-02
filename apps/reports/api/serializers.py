@@ -591,6 +591,91 @@ class SpendingPlanDetailSerializer(serializers.ModelSerializer):
         return obj.get_total_expenses_count()
 
 
+class SpendingPlanListSerializer(serializers.ModelSerializer):
+    """Serializer ULTRA-LEGGERO per la lista dei piani - evita N+1 query"""
+    from decimal import Decimal
+
+    # Usa valori già annotati dal queryset (NO query extra!)
+    total_planned_amount = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True, coerce_to_string=True
+    )
+    completed_expenses_amount = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True, coerce_to_string=True
+    )
+    unplanned_expenses_amount = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True, coerce_to_string=True
+    )
+    planned_expenses_count = serializers.IntegerField(read_only=True)
+
+    # Calcoli semplici senza query
+    total_estimated_amount = serializers.SerializerMethodField()
+    completion_percentage = serializers.SerializerMethodField()
+    pending_expenses_amount = serializers.SerializerMethodField()
+
+    # Solo ID utenti (no nested serializer pesante)
+    user_ids = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+
+    # Campi essenziali del piano
+    is_current = serializers.SerializerMethodField()
+
+    # Pin personalizzato per l'utente (dal queryset annotato)
+    is_pinned_by_user = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = SpendingPlan
+        fields = [
+            'id', 'name', 'description', 'plan_type', 'plan_scope',
+            'start_date', 'end_date', 'total_budget',
+            'total_planned_amount', 'completed_expenses_amount',
+            'unplanned_expenses_amount', 'planned_expenses_count',
+            'total_estimated_amount', 'completion_percentage',
+            'pending_expenses_amount',
+            'user_ids', 'created_by_name', 'is_active', 'is_hidden',
+            'is_pinned', 'is_pinned_by_user', 'auto_generated', 'is_current',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'created_at', 'updated_at',
+            'total_planned_amount', 'completed_expenses_amount',
+            'unplanned_expenses_amount', 'planned_expenses_count'
+        ]
+
+    def get_total_estimated_amount(self, obj):
+        """Calcola totale stimato da valori annotati"""
+        from decimal import Decimal
+        planned = obj.total_planned_amount or Decimal('0.00')
+        unplanned = obj.unplanned_expenses_amount or Decimal('0.00')
+        return str(planned + unplanned)
+
+    def get_pending_expenses_amount(self, obj):
+        """Calcola importo rimanente da valori annotati"""
+        from decimal import Decimal
+        total = obj.total_planned_amount or Decimal('0.00')
+        completed = obj.completed_expenses_amount or Decimal('0.00')
+        return str(max(total - completed, Decimal('0.00')))
+
+    def get_completion_percentage(self, obj):
+        """Calcola percentuale completamento da valori annotati"""
+        from decimal import Decimal
+        total = obj.total_planned_amount or Decimal('0.00')
+        completed = obj.completed_expenses_amount or Decimal('0.00')
+
+        if total > 0:
+            return float((completed / total) * 100)
+        return 0.0
+
+    def get_user_ids(self, obj):
+        """Usa prefetch_related esistente (no query extra)"""
+        return [u.id for u in obj.users.all()]
+
+    def get_is_current(self, obj):
+        """Verifica se il piano è attivo nel periodo corrente"""
+        from django.utils import timezone
+        today = timezone.now().date()
+        return obj.start_date <= today <= obj.end_date
+
+
 class SpendingPlanCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer per creare/aggiornare piani di spesa"""
     users = serializers.PrimaryKeyRelatedField(

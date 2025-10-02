@@ -3,7 +3,7 @@ from django.utils.html import format_html
 from django.urls import reverse
 from django.utils import timezone
 from django.db import models
-from .models import SpendingPlan, PlannedExpense
+from .models import SpendingPlan, PlannedExpense, UserSpendingPlanPreference
 
 
 class PlannedExpenseInline(admin.TabularInline):
@@ -243,3 +243,46 @@ class PlannedExpenseAdmin(admin.ModelAdmin):
             return format_html('<span style="color: orange;">🔄 Ricorrente</span>')
         return "-"
     recurring_info.short_description = "Ricorrenza"
+
+
+@admin.register(UserSpendingPlanPreference)
+class UserSpendingPlanPreferenceAdmin(admin.ModelAdmin):
+    """Admin per le preferenze utente sui piani di spesa"""
+    list_display = [
+        'user_name', 'spending_plan_name', 'is_pinned_display',
+        'custom_order', 'created_at'
+    ]
+    list_filter = ['is_pinned', 'created_at']
+    search_fields = [
+        'user__email', 'user__first_name', 'user__last_name',
+        'spending_plan__name'
+    ]
+    readonly_fields = ['created_at', 'updated_at']
+
+    fieldsets = (
+        ('Utente e Piano', {
+            'fields': ('user', 'spending_plan')
+        }),
+        ('Preferenze', {
+            'fields': ('is_pinned', 'custom_order')
+        }),
+        ('Metadati', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        })
+    )
+
+    def user_name(self, obj):
+        return obj.user.get_full_name() or obj.user.email
+    user_name.short_description = "Utente"
+
+    def spending_plan_name(self, obj):
+        url = reverse('admin:reports_spendingplan_change', args=[obj.spending_plan.pk])
+        return format_html('<a href="{}">{}</a>', url, obj.spending_plan.name)
+    spending_plan_name.short_description = "Piano"
+
+    def is_pinned_display(self, obj):
+        if obj.is_pinned:
+            return format_html('<span style="color: orange;">📌 Pinnato</span>')
+        return format_html('<span style="color: gray;">📋 Non pinnato</span>')
+    is_pinned_display.short_description = "Stato Pin"

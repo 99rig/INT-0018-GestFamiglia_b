@@ -7,6 +7,51 @@ from apps.expenses.models import Expense
 from decimal import Decimal
 
 
+class UserSpendingPlanPreference(models.Model):
+    """
+    Preferenze personalizzate dell'utente per i piani di spesa
+    Permette a ogni utente di avere pin e ordinamenti personalizzati
+    """
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='spending_plan_preferences',
+        verbose_name="Utente"
+    )
+    spending_plan = models.ForeignKey(
+        'SpendingPlan',
+        on_delete=models.CASCADE,
+        related_name='user_preferences',
+        verbose_name="Piano di spesa"
+    )
+    is_pinned = models.BooleanField(
+        default=False,
+        verbose_name="Pinnato",
+        help_text="Se True, il piano appare in cima alla lista per questo utente"
+    )
+    custom_order = models.IntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Ordinamento personalizzato",
+        help_text="Permette all'utente di riordinare manualmente i piani"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Preferenza Piano Spese"
+        verbose_name_plural = "Preferenze Piani Spese"
+        unique_together = [('user', 'spending_plan')]
+        indexes = [
+            # Indice per lookup veloce delle preferenze utente
+            models.Index(fields=['user', 'is_pinned'], name='user_pref_user_pinned_idx'),
+        ]
+
+    def __str__(self):
+        pin_icon = "📌" if self.is_pinned else "📋"
+        return f"{pin_icon} {self.user.get_full_name()} - {self.spending_plan.name}"
+
+
 class SpendingPlan(models.Model):
     """
     Piano di spese per periodi personalizzabili - contenitore di spese pianificate
@@ -99,6 +144,21 @@ class SpendingPlan(models.Model):
         verbose_name = "Piano Spese"
         verbose_name_plural = "Piani Spese"
         ordering = ['-is_pinned', '-start_date', '-created_at']
+
+        # Indici per ottimizzare le query più comuni
+        indexes = [
+            # Indice per ordinamento e filtro temporale (usato in get_queryset)
+            models.Index(fields=['-start_date', '-created_at'], name='spending_plan_date_idx'),
+
+            # Indice per filtrare per scope e status attivo
+            models.Index(fields=['plan_scope', 'is_active'], name='spending_plan_scope_active_idx'),
+
+            # Indice per ordinamento con pin (usato in ordering)
+            models.Index(fields=['-is_pinned', '-start_date'], name='spending_plan_pinned_idx'),
+
+            # Indice per filtro piani nascosti
+            models.Index(fields=['is_hidden', '-start_date'], name='spending_plan_hidden_idx'),
+        ]
 
     def __str__(self):
         scope_icon = "👥" if self.plan_scope == 'family' else "👤"
@@ -309,6 +369,21 @@ class PlannedExpense(models.Model):
         verbose_name = "Spesa Pianificata"
         verbose_name_plural = "Spese Pianificate"
         ordering = ['due_date', '-priority', 'created_at']
+
+        # Indici per ottimizzare le query più comuni
+        indexes = [
+            # Indice per filtrare per piano e completamento (usato spesso nelle annotazioni)
+            models.Index(fields=['spending_plan', 'is_completed'], name='planned_exp_plan_completed_idx'),
+
+            # Indice per spese ricorrenti (lookup per parent_recurring_id)
+            models.Index(fields=['parent_recurring_id', 'installment_number'], name='planned_exp_recurring_idx'),
+
+            # Indice per ordinamento predefinito
+            models.Index(fields=['due_date', '-priority'], name='planned_exp_due_priority_idx'),
+
+            # Indice per spese nascoste
+            models.Index(fields=['is_hidden', 'due_date'], name='planned_exp_hidden_idx'),
+        ]
 
     def __str__(self):
         return f"{self.spending_plan.name} - {self.description}"
