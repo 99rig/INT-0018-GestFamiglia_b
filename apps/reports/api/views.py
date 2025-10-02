@@ -303,6 +303,7 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
             return PlannedExpenseCreateUpdateSerializer
         return PlannedExpenseSerializer
 
+
     @action(detail=True, methods=['post'])
     def add_payment(self, request, pk=None):
         """Aggiunge un pagamento a una spesa pianificata"""
@@ -879,6 +880,128 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
 
         serializer = ExpenseSerializer(payments, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['patch'], url_path='update_payment')
+    def update_payment(self, request, pk=None):
+        """Modifica un pagamento specifico di una spesa pianificata"""
+        from apps.expenses.models import Expense
+        from apps.expenses.api.serializers import ExpenseCreateUpdateSerializer
+        from decimal import Decimal
+
+        planned_expense = self.get_object()
+        user = request.user
+        payment_id = request.data.get('payment_id')
+
+        if not payment_id:
+            return Response(
+                {'detail': 'payment_id obbligatorio'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Trova il pagamento (spesa collegata)
+            payment = Expense.objects.get(
+                id=payment_id,
+                planned_expense=planned_expense,
+                user__family=user.family
+            )
+        except Expense.DoesNotExist:
+            return Response(
+                {'detail': 'Pagamento non trovato'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Salva l'importo originale per ricalcolare il rimanente
+        original_amount = payment.amount
+        new_amount = request.data.get('amount')
+
+        if new_amount:
+            try:
+                new_amount = Decimal(str(new_amount))
+                if new_amount <= 0:
+                    return Response(
+                        {'detail': 'L\'importo deve essere maggiore di zero'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                # Calcola quanto rimanente avremmo se togliessimo questo pagamento
+                remaining_without_this = planned_expense.get_remaining_amount() + original_amount
+
+                # Verifica che il nuovo importo non superi il rimanente
+                if new_amount > remaining_without_this:
+                    return Response(
+                        {'detail': f'Il nuovo importo di €{new_amount} supera l\'importo disponibile di €{remaining_without_this}'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except (ValueError, TypeError):
+                return Response(
+                    {'detail': 'Importo non valido'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # Aggiorna il pagamento
+        serializer = ExpenseCreateUpdateSerializer(payment, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+
+            # Ricarica la spesa pianificata per aggiornare i totali
+            planned_expense.refresh_from_db()
+
+            from apps.expenses.api.serializers import ExpenseSerializer
+            return Response(ExpenseSerializer(payment).data)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['delete'], url_path='delete_payment')
+    def delete_payment(self, request, pk=None):
+        """Elimina un pagamento specifico di una spesa pianificata"""
+        from apps.expenses.models import Expense
+
+        planned_expense = self.get_object()
+        user = request.user
+        payment_id = request.data.get('payment_id') or request.query_params.get('payment_id')
+
+        if not payment_id:
+            return Response(
+                {'detail': 'payment_id obbligatorio'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Trova il pagamento (spesa collegata)
+            payment = Expense.objects.get(
+                id=payment_id,
+                planned_expense=planned_expense,
+                user__family=user.family
+            )
+        except Expense.DoesNotExist:
+            return Response(
+                {'detail': 'Pagamento non trovato'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Se il pagamento usa contributi famiglia, ripristina il saldo
+        if payment.payment_source == 'contribution':
+            from apps.contributions.models import ExpenseContribution
+
+            # Trova tutti i contributi usati per questo pagamento
+            expense_contributions = ExpenseContribution.objects.filter(expense=payment)
+
+            for ec in expense_contributions:
+                # Ripristina il saldo disponibile
+                ec.contribution.available_balance += ec.amount_used
+                ec.contribution.save()
+
+            # Elimina i record di collegamento
+            expense_contributions.delete()
+
+        # Elimina il pagamento
+        payment.delete()
+
+        # Ricarica la spesa pianificata per aggiornare i totali
+        planned_expense.refresh_from_db()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def _get_or_create_plan_for_date(self, target_date, template_plan, user):
         """Helper: trova o crea un piano per la data target"""

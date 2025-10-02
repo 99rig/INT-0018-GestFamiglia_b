@@ -59,7 +59,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Assegna l'utente corrente alla spesa"""
         serializer.save(user=self.request.user)
-    
+
     @action(detail=False, methods=['get'])
     def my_expenses(self, request):
         """Restituisce solo le spese create dall'utente stesso"""

@@ -103,7 +103,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'category', 'category_detail', 'subcategory',
             'subcategory_detail', 'amount', 'description', 'notes', 'date',
-            'payment_method', 'status', 'receipt', 'shared_with',
+            'payment_method', 'payment_source', 'status', 'receipt', 'shared_with',
             'shared_with_details', 'is_recurring', 'budget', 'budget_detail',
             'spending_plan', 'attachments', 'quote', 'split_amount', 'has_quote', 'total_paid_amount',
             'remaining_amount', 'payment_progress_percentage', 'paid_quote_count',
@@ -176,7 +176,7 @@ class ExpenseCreateUpdateSerializer(serializers.ModelSerializer):
         model = Expense
         fields = [
             'category', 'subcategory', 'amount', 'description', 'notes',
-            'date', 'payment_method', 'status', 'receipt', 'shared_with',
+            'date', 'payment_method', 'payment_source', 'status', 'receipt', 'shared_with',
             'is_recurring', 'budget', 'spending_plan'
         ]
 
