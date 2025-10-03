@@ -258,6 +258,36 @@ class SpendingPlan(models.Model):
         today = timezone.now().date()
         return self.start_date <= today <= self.end_date
 
+    def get_my_assigned_total(self, user):
+        """Calcola il totale delle spese assegnate all'utente specificato
+
+        Include:
+        - Spese pianificate individuali (paid_by_user = user)
+        - Quota delle spese pianificate parziali (my_share)
+        - Spese effettive individuali associate al piano (paid_by_user = user)
+        - Quota delle spese effettive parziali associate al piano
+        """
+        from apps.expenses.models import Expense
+
+        total = Decimal('0.00')
+
+        # Spese pianificate
+        for planned_expense in self.planned_expenses.all():
+            if planned_expense.payment_type == 'individual' and planned_expense.paid_by_user_id == user.id:
+                total += planned_expense.amount
+            elif planned_expense.payment_type == 'partial':
+                total += planned_expense.get_my_share(user)
+
+        # Spese effettive (non pianificate) associate al piano
+        expenses = Expense.objects.filter(spending_plan=self)
+        for expense in expenses:
+            if expense.payment_type == 'individual' and expense.paid_by_user_id == user.id:
+                total += expense.amount
+            elif expense.payment_type == 'partial':
+                total += expense.get_my_share()
+
+        return total
+
 
 class PlannedExpense(models.Model):
     """
@@ -518,16 +548,34 @@ class PlannedExpense(models.Model):
             return False
         return self.installment_number == self.total_installments
 
-    def get_my_share(self):
-        """Calcola la quota da pagare in base al payment_type"""
+    def get_my_share(self, user=None):
+        """Calcola la quota da pagare in base al payment_type
+
+        Per spese parziali, calcola dinamicamente dalla somma dei pagamenti reali dell'utente.
+        Se non ci sono pagamenti, usa il default (amount/2).
+        """
         from decimal import Decimal
         if self.payment_type == 'individual':
             # Spesa individuale: pago tutto
             return self.amount
         elif self.payment_type == 'partial':
-            # Spesa parziale: uso my_share_amount se valorizzato, altrimenti metà
+            # Spesa parziale: calcola dalla somma dei pagamenti reali
+            if user:
+                # Calcola dalla somma dei pagamenti effettivi dell'utente
+                from apps.expenses.models import Expense
+                total_paid_by_user = Expense.objects.filter(
+                    planned_expense=self,
+                    user=user
+                ).aggregate(total=models.Sum('amount'))['total'] or Decimal('0.00')
+
+                if total_paid_by_user > 0:
+                    return total_paid_by_user
+
+            # Se non ci sono pagamenti, usa my_share_amount se valorizzato
             if self.my_share_amount is not None:
                 return self.my_share_amount
+
+            # Altrimenti default: metà
             return self.amount / 2
         else:
             # Spesa condivisa: nessuna quota specifica

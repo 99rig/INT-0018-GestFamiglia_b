@@ -112,7 +112,9 @@ class PlannedExpenseSerializer(serializers.ModelSerializer):
 
     def get_my_share(self, obj):
         """Calcola la quota da pagare"""
-        return str(obj.get_my_share())
+        request = self.context.get('request')
+        user = request.user if request else None
+        return str(obj.get_my_share(user))
 
     def get_other_share(self, obj):
         """Calcola la quota dell'altra persona"""
@@ -269,7 +271,9 @@ class PlannedExpenseLightSerializer(serializers.ModelSerializer):
 
     def get_my_share(self, obj):
         """Calcola la quota da pagare"""
-        return str(obj.get_my_share())
+        request = self.context.get('request')
+        user = request.user if request else None
+        return str(obj.get_my_share(user))
 
     def get_other_share(self, obj):
         """Calcola la quota dell'altra persona"""
@@ -568,6 +572,7 @@ class SpendingPlanDetailSerializer(serializers.ModelSerializer):
     completion_percentage = serializers.SerializerMethodField()
     completed_count = serializers.SerializerMethodField()
     total_expenses_count = serializers.SerializerMethodField()
+    my_assigned_total = serializers.SerializerMethodField()
 
     class Meta:
         model = SpendingPlan
@@ -578,13 +583,13 @@ class SpendingPlanDetailSerializer(serializers.ModelSerializer):
             'planned_expenses_detail',
             'total_planned_amount', 'total_unplanned_expenses_amount', 'total_estimated_amount',
             'completed_expenses_amount', 'pending_expenses_amount', 'completion_percentage',
-            'completed_count', 'total_expenses_count'
+            'completed_count', 'total_expenses_count', 'my_assigned_total'
         ]
         read_only_fields = [
             'id', 'created_at', 'updated_at', 'total_planned_amount',
             'total_unplanned_expenses_amount', 'total_estimated_amount',
             'completed_expenses_amount', 'pending_expenses_amount',
-            'completion_percentage', 'completed_count', 'total_expenses_count'
+            'completion_percentage', 'completed_count', 'total_expenses_count', 'my_assigned_total'
         ]
 
     def get_total_planned_amount(self, obj):
@@ -610,6 +615,13 @@ class SpendingPlanDetailSerializer(serializers.ModelSerializer):
 
     def get_total_expenses_count(self, obj):
         return obj.get_total_expenses_count()
+
+    def get_my_assigned_total(self, obj):
+        """Calcola il totale delle spese assegnate all'utente corrente"""
+        request = self.context.get('request')
+        if request and request.user:
+            return str(obj.get_my_assigned_total(request.user))
+        return '0.00'
 
 
 class SpendingPlanListSerializer(serializers.ModelSerializer):

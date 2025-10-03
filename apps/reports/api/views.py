@@ -1505,8 +1505,8 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
             planned_expenses_serializer = PlannedExpenseLightSerializer(paginator, many=True)
 
             # Serializza i dati del piano
-            from .serializers import SpendingPlanSerializer
-            plan_serializer = SpendingPlanSerializer(plan)
+            from .serializers import SpendingPlanDetailSerializer
+            plan_serializer = SpendingPlanDetailSerializer(plan, context={'request': request})
 
             # Carica le spese reali del piano (non paginate)
             from apps.expenses.models import Expense
@@ -1543,8 +1543,8 @@ class SpendingPlanViewSet(viewsets.ModelViewSet):
             })
 
         # Fallback se la paginazione non è disponibile
-        from .serializers import SpendingPlanSerializer, PlannedExpenseLightSerializer
-        plan_serializer = SpendingPlanSerializer(plan)
+        from .serializers import SpendingPlanDetailSerializer, PlannedExpenseLightSerializer
+        plan_serializer = SpendingPlanDetailSerializer(plan, context={'request': request})
         planned_expenses_serializer = PlannedExpenseLightSerializer(planned_expenses_qs, many=True)
 
         return Response({
